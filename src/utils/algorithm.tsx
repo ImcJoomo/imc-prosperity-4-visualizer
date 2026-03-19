@@ -199,7 +199,7 @@ function getAlgorithmData(resultLog: ResultLog): AlgorithmDataRow[] {
   // }
 
   const rows: AlgorithmDataRow[] = [];
-  let nextSandboxLogs = '';
+  const nextSandboxLogs = '';
 
   for (const lg of resultLog.logs) {
     // nextSandboxLogs = lg.sandboxLog.trim()
