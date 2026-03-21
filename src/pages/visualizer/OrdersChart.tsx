@@ -12,25 +12,6 @@ export interface OrdersChartProps {
 export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
 
-  // Build set of filled order keys from ownTrades.
-  // Orders placed at timestamp T appear in ownTrades at timestamp T+100 (next row),
-  // with trade.timestamp == T. Key format: `${orderTimestamp}-${price}-${side}`.
-  const filledKeys = new Set<string>();
-  for (const row of algorithm.data) {
-    const ownTrades = row.state.ownTrades[symbol];
-    if (!ownTrades) {
-      continue;
-    }
-    for (const trade of ownTrades) {
-      if (trade.buyer === 'SUBMISSION') {
-        filledKeys.add(`${trade.timestamp}-${trade.price}-buy`);
-      }
-      if (trade.seller === 'SUBMISSION') {
-        filledKeys.add(`${trade.timestamp}-${trade.price}-sell`);
-      }
-    }
-  }
-
   const filledBuyData: Highcharts.PointOptionsObject[] = [];
   const unfilledBuyData: Highcharts.PointOptionsObject[] = [];
   const filledSellData: Highcharts.PointOptionsObject[] = [];
@@ -44,10 +25,30 @@ export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
     midPriceData.push([row.timestamp, row.midPrice]);
   }
 
-  for (const row of algorithm.data) {
+  // Orders placed at timestamp T appear in ownTrades at timestamp T+100 (next row),
+  // with trade.timestamp == T. Check fills per-row using the immediately next row's
+  // ownTrades to avoid cross-day timestamp collisions in multi-day rounds.
+  for (let i = 0; i < algorithm.data.length; i++) {
+    const row = algorithm.data[i];
     const orders = row.orders[symbol];
     if (!orders) {
       continue;
+    }
+
+    const nextOwnTrades = algorithm.data[i + 1]?.state.ownTrades[symbol] ?? [];
+    const filledBuyPrices = new Set<number>();
+    const filledSellPrices = new Set<number>();
+
+    for (const trade of nextOwnTrades) {
+      if (trade.timestamp !== row.state.timestamp) {
+        continue;
+      }
+      if (trade.buyer === 'SUBMISSION') {
+        filledBuyPrices.add(trade.price);
+      }
+      if (trade.seller === 'SUBMISSION') {
+        filledSellPrices.add(trade.price);
+      }
     }
 
     for (const order of orders) {
@@ -58,11 +59,9 @@ export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
       };
 
       if (order.quantity > 0) {
-        const filled = filledKeys.has(`${row.state.timestamp}-${order.price}-buy`);
-        (filled ? filledBuyData : unfilledBuyData).push(point);
+        (filledBuyPrices.has(order.price) ? filledBuyData : unfilledBuyData).push(point);
       } else if (order.quantity < 0) {
-        const filled = filledKeys.has(`${row.state.timestamp}-${order.price}-sell`);
-        (filled ? filledSellData : unfilledSellData).push(point);
+        (filledSellPrices.has(order.price) ? filledSellData : unfilledSellData).push(point);
       }
     }
   }

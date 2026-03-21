@@ -193,24 +193,10 @@ function decompressDataRow(compressed: CompressedAlgorithmDataRow, sandboxLogs: 
 }
 
 function getAlgorithmData(resultLog: ResultLog): AlgorithmDataRow[] {
-  // const headerIndex = logLines.indexOf('Sandbox logs:');
-  // if (headerIndex === -1) {
-  //   return [];
-  // }
-
   const rows: AlgorithmDataRow[] = [];
   const nextSandboxLogs = '';
 
   for (const lg of resultLog.logs) {
-    // nextSandboxLogs = lg.sandboxLog.trim()
-    //
-    // if (nextSandboxLogs.startsWith('Conversion request')) {
-    //   const lastRow = rows[rows.length - 1];
-    //   lastRow.sandboxLogs += (lastRow.sandboxLogs.length > 0 ? '\n' : '') + nextSandboxLogs;
-    //
-    //   nextSandboxLogs = '';
-    // }
-
     const lambdaLog = lg.lambdaLog.trim();
     if (lambdaLog === '') {
       continue;
@@ -234,6 +220,32 @@ function getAlgorithmData(resultLog: ResultLog): AlgorithmDataRow[] {
     }
   }
 
+  // Adjust trade timestamps: the backtester records within-day timestamps (0–999900)
+  // in trades, but state.timestamp is global (day * 1000000 + within_day).
+  // For each row, compute the day offset and shift trade timestamps to global,
+  // handling the day boundary where ownTrades may contain trades from the previous day.
+  for (const row of rows) {
+    const dayOffset = Math.floor(row.state.timestamp / 1000000) * 1000000;
+    if (dayOffset === 0) continue;
+
+    const adjustTimestamp = (ts: number): number => {
+      const adjusted = ts + dayOffset;
+      // If adjusted exceeds the current state timestamp, the trade is from the
+      // previous day (day boundary case), so subtract one day's worth.
+      return adjusted > row.state.timestamp ? adjusted - 1000000 : adjusted;
+    };
+
+    for (const symbol of Object.keys(row.state.ownTrades)) {
+      for (const trade of row.state.ownTrades[symbol]) {
+        trade.timestamp = adjustTimestamp(trade.timestamp);
+      }
+    }
+    for (const symbol of Object.keys(row.state.marketTrades)) {
+      for (const trade of row.state.marketTrades[symbol]) {
+        trade.timestamp = adjustTimestamp(trade.timestamp);
+      }
+    }
+  }
   return rows;
 }
 

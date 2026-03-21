@@ -19,11 +19,16 @@ const GROUP_SIZE_OPTIONS = [
   { value: '100', label: '100 ticks' },
 ];
 
+function defaultGroupSize(timestampCount: number): string {
+  if (timestampCount >= 10000) return '100';
+  return '10';
+}
+
 export function CandlestickChart({ symbol }: CandlestickChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
-  const [groupSize, setGroupSize] = useState('10');
 
   const rows = algorithm.activityLogs.filter(row => row.product === symbol);
+  const [groupSize, setGroupSize] = useState(() => defaultGroupSize(rows.length));
   const size = parseInt(groupSize);
 
   const candleData: [number, number, number, number, number][] = [];
