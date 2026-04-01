@@ -24,6 +24,7 @@ import {
   TradingState,
 } from '../models.ts';
 import { authenticatedAxios } from './axios.ts';
+import { microPriceFromTopOfBook } from './microPrice.ts';
 
 export class AlgorithmParseError extends Error {
   public constructor(public readonly node: ReactNode) {
@@ -60,15 +61,21 @@ function getActivityLogs(logLines: string): ActivityLogRow[] {
 
     const columns = line.split(';');
 
+    const bidPrices = getColumnValues(columns, [3, 5, 7]);
+    const bidVolumes = getColumnValues(columns, [4, 6, 8]);
+    const askPrices = getColumnValues(columns, [9, 11, 13]);
+    const askVolumes = getColumnValues(columns, [10, 12, 14]);
+    const fallbackMid = Number(columns[15]);
+
     rows.push({
       day: Number(columns[0]),
       timestamp: Number(columns[1]),
       product: columns[2],
-      bidPrices: getColumnValues(columns, [3, 5, 7]),
-      bidVolumes: getColumnValues(columns, [4, 6, 8]),
-      askPrices: getColumnValues(columns, [9, 11, 13]),
-      askVolumes: getColumnValues(columns, [10, 12, 14]),
-      midPrice: Number(columns[15]),
+      bidPrices,
+      bidVolumes,
+      askPrices,
+      askVolumes,
+      microPrice: microPriceFromTopOfBook(bidPrices, bidVolumes, askPrices, askVolumes, fallbackMid),
       profitLoss: Number(columns[16]),
     });
   }

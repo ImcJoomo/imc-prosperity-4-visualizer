@@ -55,7 +55,7 @@ export interface ActivityLogRow {
   bidVolumes: number[];
   askPrices: number[];
   askVolumes: number[];
-  midPrice: number;
+  microPrice: number;
   profitLoss: number;
 }
 

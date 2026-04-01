@@ -1,8 +1,10 @@
 import Highcharts from 'highcharts';
-import { ReactNode } from 'react';
+import { ReactNode, useMemo, useState } from 'react';
 import { Algorithm, ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
+import { type DeltaValueMode, deltaXYSeries } from '../../utils/seriesDelta.ts';
 import { Chart } from './Chart.tsx';
+import { ChartDeltaBar } from './ChartDeltaBar.tsx';
 
 function getLimit(algorithm: Algorithm, symbol: ProsperitySymbol): number {
   const knownLimits: Record<string, number> = {
@@ -30,33 +32,60 @@ export interface PositionChartProps {
 
 export function PositionChart({ symbols }: PositionChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
+  const [deltaEnabled, setDeltaEnabled] = useState(false);
+  const [deltaValueMode, setDeltaValueMode] = useState<DeltaValueMode>('raw');
 
-  const limits: Record<string, number> = {};
-  for (const symbol of symbols) {
-    limits[symbol] = getLimit(algorithm, symbol);
-  }
-
-  const data: Record<string, [number, number][]> = {};
-  for (const symbol of symbols) {
-    data[symbol] = [];
-  }
-
-  for (const row of algorithm.data) {
+  const { series, title, min, max } = useMemo(() => {
+    const limits: Record<string, number> = {};
     for (const symbol of symbols) {
-      const position = row.state.position[symbol] || 0;
-      data[symbol].push([row.state.timestamp, (position / limits[symbol]) * 100]);
+      limits[symbol] = getLimit(algorithm, symbol);
     }
-  }
 
-  const series: Highcharts.SeriesOptionsType[] = symbols.map((symbol, i) => ({
-    type: 'line',
-    name: symbol,
-    data: data[symbol],
+    const data: Record<string, [number, number][]> = {};
+    for (const symbol of symbols) {
+      data[symbol] = [];
+    }
 
-    // We offset the position color by 1 to make it line up with the colors in the profit / loss chart,
-    // while keeping the "Total" line in the profit / loss chart the same color at all times
-    colorIndex: (i + 1) % 10,
-  }));
+    for (const row of algorithm.data) {
+      for (const symbol of symbols) {
+        const position = row.state.position[symbol] || 0;
+        data[symbol].push([row.state.timestamp, (position / limits[symbol]) * 100]);
+      }
+    }
 
-  return <Chart title="Positions (% of limit)" series={series} min={-100} max={100} />;
+    const nextSeries: Highcharts.SeriesOptionsType[] = symbols.map((symbol, i) => ({
+      type: 'line',
+      name: symbol,
+      data: deltaEnabled ? deltaXYSeries(data[symbol], deltaValueMode) : data[symbol],
+      colorIndex: (i + 1) % 10,
+    }));
+
+    return {
+      series: nextSeries,
+      title: deltaEnabled
+        ? deltaValueMode === 'percent'
+          ? 'Positions — Δ% vs prior step'
+          : 'Positions — step Δ (pp of limit)'
+        : 'Positions (% of limit)',
+      min: deltaEnabled ? undefined : -100,
+      max: deltaEnabled ? undefined : 100,
+    };
+  }, [algorithm, symbols, deltaEnabled, deltaValueMode]);
+
+  return (
+    <Chart
+      title={title}
+      series={series}
+      min={min}
+      max={max}
+      controls={
+        <ChartDeltaBar
+          enabled={deltaEnabled}
+          onEnabledChange={setDeltaEnabled}
+          valueMode={deltaValueMode}
+          onValueModeChange={setDeltaValueMode}
+        />
+      }
+    />
+  );
 }

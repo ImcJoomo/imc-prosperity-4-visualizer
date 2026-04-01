@@ -1,5 +1,5 @@
 import { Center, Container, Grid, Title } from '@mantine/core';
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useStore } from '../../store.ts';
 import { formatNumber } from '../../utils/format.ts';
@@ -14,9 +14,12 @@ import { ProfitLossChart } from './ProfitLossChart.tsx';
 import { TimestampsCard } from './TimestampsCard.tsx';
 import { TransportChart } from './TransportChart.tsx';
 import { VisualizerCard } from './VisualizerCard.tsx';
+import { VisualizerToolbar } from './VisualizerToolbar.tsx';
 
 export function VisualizerPage(): ReactNode {
   const algorithm = useStore(state => state.algorithm);
+  const hiddenSymbols = useStore(state => state.visualizerHiddenSymbols);
+  const hiddenSet = useMemo(() => new Set(hiddenSymbols), [hiddenSymbols]);
 
   const { search } = useLocation();
 
@@ -54,9 +57,14 @@ export function VisualizerPage(): ReactNode {
 
   const sortedSymbols = [...symbols].sort((a, b) => a.localeCompare(b));
   const sortedPlainValueObservationSymbols = [...plainValueObservationSymbols].sort((a, b) => a.localeCompare(b));
+  const visibleListingSymbols = sortedSymbols.filter(s => !hiddenSet.has(s));
 
   const symbolColumns: ReactNode[] = [];
   sortedSymbols.forEach(symbol => {
+    if (hiddenSet.has(symbol)) {
+      return;
+    }
+
     symbolColumns.push(
       <Grid.Col key={`${symbol} - candlestick`} span={{ xs: 12, sm: 6 }}>
         <CandlestickChart symbol={symbol} />
@@ -95,6 +103,10 @@ export function VisualizerPage(): ReactNode {
   });
 
   sortedPlainValueObservationSymbols.forEach(symbol => {
+    if (hiddenSet.has(symbol)) {
+      return;
+    }
+
     symbolColumns.push(
       <Grid.Col key={`${symbol} - plain value observation`} span={{ xs: 12, sm: 6 }}>
         <PlainValueObservationChart symbol={symbol} />
@@ -106,6 +118,9 @@ export function VisualizerPage(): ReactNode {
     <Container fluid>
       <Grid>
         <Grid.Col span={12}>
+          <VisualizerToolbar />
+        </Grid.Col>
+        <Grid.Col span={12}>
           <VisualizerCard>
             <Center>
               <Title order={2}>Final Profit / Loss: {formatNumber(profitLoss)}</Title>
@@ -113,10 +128,10 @@ export function VisualizerPage(): ReactNode {
           </VisualizerCard>
         </Grid.Col>
         <Grid.Col span={{ xs: 12, sm: 6 }}>
-          <ProfitLossChart symbols={sortedSymbols} />
+          <ProfitLossChart symbols={visibleListingSymbols} />
         </Grid.Col>
         <Grid.Col span={{ xs: 12, sm: 6 }}>
-          <PositionChart symbols={sortedSymbols} />
+          <PositionChart symbols={visibleListingSymbols} />
         </Grid.Col>
         {symbolColumns}
         <Grid.Col span={12}>

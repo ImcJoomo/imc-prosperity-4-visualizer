@@ -1,0 +1,15 @@
+import { Algorithm } from '../models.ts';
+
+export function collectAllProductKeysForVisibility(algorithm: Algorithm): string[] {
+  const keys = new Set<string>();
+  for (let i = 0; i < algorithm.data.length; i += 1000) {
+    const row = algorithm.data[i];
+    for (const k of Object.keys(row.state.listings)) {
+      keys.add(k);
+    }
+    for (const k of Object.keys(row.state.observations.plainValueObservations)) {
+      keys.add(k);
+    }
+  }
+  return [...keys].sort((a, b) => a.localeCompare(b));
+}

@@ -1,6 +1,6 @@
 import { Group, NumberInput, Slider, SliderProps, Text, Title } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
-import { KeyboardEvent, ReactNode, useEffect, useState } from 'react';
+import { KeyboardEvent, ReactNode, useCallback, useEffect, useState } from 'react';
 import { AlgorithmDataRow } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { formatNumber } from '../../utils/format.ts';
@@ -9,6 +9,9 @@ import { VisualizerCard } from './VisualizerCard.tsx';
 
 export function TimestampsCard(): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
+  const followDetail = useStore(state => state.visualizerFollowTimestampDetail);
+  const externalDetailTs = useStore(state => state.visualizerDetailTimestamp);
+  const setFollowDetail = useStore(state => state.setVisualizerFollowTimestampDetail);
 
   const rowsByTimestamp: Record<number, AlgorithmDataRow> = {};
   for (const row of algorithm.data) {
@@ -38,14 +41,27 @@ export function TimestampsCard(): ReactNode {
     });
   }
 
-  function snapToNearest(value: number): number {
-    const clamped = Math.max(timestampMin, Math.min(timestampMax, value));
-    return Math.round((clamped - timestampMin) / timestampStep) * timestampStep + timestampMin;
-  }
+  const snapToNearest = useCallback(
+    (value: number): number => {
+      const clamped = Math.max(timestampMin, Math.min(timestampMax, value));
+      return Math.round((clamped - timestampMin) / timestampStep) * timestampStep + timestampMin;
+    },
+    [timestampMin, timestampMax, timestampStep],
+  );
+
+  useEffect(() => {
+    if (!followDetail || externalDetailTs === null) {
+      return;
+    }
+    const snapped = snapToNearest(externalDetailTs);
+    setTimestamp(snapped);
+    setInputValue(snapped);
+  }, [followDetail, externalDetailTs, snapToNearest]);
 
   function commit(): void {
     const parsed = typeof inputValue === 'number' ? inputValue : Number(inputValue);
     if (!isNaN(parsed)) {
+      setFollowDetail(false);
       setTimestamp(snapToNearest(parsed));
     }
   }
@@ -55,8 +71,20 @@ export function TimestampsCard(): ReactNode {
   }
 
   useHotkeys([
-    ['ArrowLeft', () => setTimestamp(timestamp === timestampMin ? timestamp : timestamp - timestampStep)],
-    ['ArrowRight', () => setTimestamp(timestamp === timestampMax ? timestamp : timestamp + timestampStep)],
+    [
+      'ArrowLeft',
+      () => {
+        setFollowDetail(false);
+        setTimestamp(timestamp === timestampMin ? timestamp : timestamp - timestampStep);
+      },
+    ],
+    [
+      'ArrowRight',
+      () => {
+        setFollowDetail(false);
+        setTimestamp(timestamp === timestampMax ? timestamp : timestamp + timestampStep);
+      },
+    ],
   ]);
 
   return (
@@ -67,9 +95,8 @@ export function TimestampsCard(): ReactNode {
           value={inputValue}
           onChange={value => {
             setInputValue(value);
-            // Stepper buttons produce a valid snapped timestamp — commit immediately.
-            // Partial typed values (e.g. 273 when heading to 27300) won't match and are left pending.
             if (typeof value === 'number' && snapToNearest(value) === value) {
+              setFollowDetail(false);
               setTimestamp(value);
             }
           }}
@@ -90,7 +117,10 @@ export function TimestampsCard(): ReactNode {
         marks={marks}
         label={value => `Timestamp ${formatNumber(value)}`}
         value={timestamp}
-        onChange={setTimestamp}
+        onChange={v => {
+          setFollowDetail(false);
+          setTimestamp(v);
+        }}
         mb="lg"
       />
 

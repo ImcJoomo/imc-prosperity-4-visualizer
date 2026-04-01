@@ -8,7 +8,16 @@ import HighchartsReact from 'highcharts-react-official';
 import merge from 'lodash/merge';
 import { ReactNode, useMemo } from 'react';
 import { useActualColorScheme } from '../../hooks/use-actual-color-scheme.ts';
+import { useStore } from '../../store.ts';
 import { formatNumber } from '../../utils/format.ts';
+import {
+  clearSyncedCrosshairPlotLines,
+  isVisualizerSyncTrigger,
+  propagateXAxisExtremes,
+  registerLinkedChart,
+  syncCrosshairPlotLines,
+  unregisterLinkedChart,
+} from './chartLinkRegistry.ts';
 import { VisualizerCard } from './VisualizerCard.tsx';
 
 HighchartsAccessibility(Highcharts);
@@ -54,6 +63,9 @@ interface ChartProps {
 
 export function Chart({ title, options, series, min, max, controls }: ChartProps): ReactNode {
   const colorScheme = useActualColorScheme();
+  const linkedZoom = useStore(state => state.visualizerLinkedZoom);
+  const coarseGrouping = useStore(state => state.visualizerCoarseGrouping);
+  const syncCrosshair = useStore(state => state.visualizerSyncCrosshair);
 
   const fullOptions = useMemo((): Highcharts.Options => {
     const themeOptions = colorScheme === 'light' ? {} : getThemeOptions(HighchartsHighContrastDarkTheme);
@@ -72,7 +84,76 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
         panKey: 'shift',
         numberFormatter: formatNumber,
         events: {
-          load() {
+          load(this: Highcharts.Chart) {
+            registerLinkedChart(this);
+            let detailRaf = 0;
+            let crosshairRaf = 0;
+            let pendingCrosshairX: number | null = null;
+            const onContainerMove = (e: MouseEvent): void => {
+              const st = useStore.getState();
+              const pos = this.pointer.normalize(e as unknown as PointerEvent);
+              if (!pos) {
+                return;
+              }
+              const { chartX, chartY } = pos;
+              const { plotLeft, plotWidth, plotTop, plotHeight } = this;
+              const insidePlot =
+                chartX >= plotLeft &&
+                chartX <= plotLeft + plotWidth &&
+                chartY >= plotTop &&
+                chartY <= plotTop + plotHeight;
+
+              if (!st.visualizerSyncCrosshair) {
+                clearSyncedCrosshairPlotLines();
+              } else if (insidePlot) {
+                const xVal = this.xAxis[0].toValue(chartX);
+                if (typeof xVal === 'number' && !Number.isNaN(xVal)) {
+                  pendingCrosshairX = xVal;
+                  if (!crosshairRaf) {
+                    crosshairRaf = window.requestAnimationFrame(() => {
+                      crosshairRaf = 0;
+                      const xv = pendingCrosshairX;
+                      if (xv !== null && useStore.getState().visualizerSyncCrosshair) {
+                        syncCrosshairPlotLines(this, xv);
+                      }
+                    });
+                  }
+                }
+              } else {
+                clearSyncedCrosshairPlotLines();
+              }
+
+              if (!st.visualizerFollowTimestampDetail || !insidePlot) {
+                return;
+              }
+              if (detailRaf) {
+                return;
+              }
+              detailRaf = window.requestAnimationFrame(() => {
+                detailRaf = 0;
+                const xVal = this.xAxis[0].toValue(chartX);
+                if (typeof xVal !== 'number' || Number.isNaN(xVal)) {
+                  return;
+                }
+                useStore.getState().setVisualizerDetailTimestamp(xVal);
+              });
+            };
+            const onContainerLeave = (): void => {
+              clearSyncedCrosshairPlotLines();
+            };
+            this.container.addEventListener('mousemove', onContainerMove);
+            this.container.addEventListener('mouseleave', onContainerLeave);
+            Highcharts.addEvent(this, 'destroy', () => {
+              if (detailRaf) {
+                window.cancelAnimationFrame(detailRaf);
+              }
+              if (crosshairRaf) {
+                window.cancelAnimationFrame(crosshairRaf);
+              }
+              this.container.removeEventListener('mousemove', onContainerMove);
+              this.container.removeEventListener('mouseleave', onContainerLeave);
+              unregisterLinkedChart(this);
+            });
             Highcharts.addEvent(this.tooltip, 'headerFormatter', (e: any) => {
               if (e.isFooter) {
                 return true;
@@ -120,7 +201,7 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
             anchor: 'start',
             firstAnchor: 'firstPoint',
             lastAnchor: 'lastPoint',
-            units: [['second', [1, 2, 5, 10]]],
+            units: [coarseGrouping ? ['second', [5, 10, 30, 60]] : ['second', [1, 2, 5, 10]]],
           },
         },
       },
@@ -134,6 +215,21 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
         },
         labels: {
           formatter: params => formatNumber(params.value as number),
+        },
+        events: {
+          afterSetExtremes(this: Highcharts.Axis, e: Highcharts.AxisSetExtremesEventObject) {
+            if (!useStore.getState().visualizerLinkedZoom) {
+              return;
+            }
+            if (isVisualizerSyncTrigger(String(e.trigger))) {
+              return;
+            }
+            const { min, max } = this.getExtremes();
+            if (min == null || max == null) {
+              return;
+            }
+            propagateXAxisExtremes(this.chart, min, max);
+          },
         },
       },
       yAxis: {
@@ -164,7 +260,7 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
     };
 
     return merge(themeOptions, chartOptions);
-  }, [colorScheme, title, options, series, min, max]);
+  }, [colorScheme, title, options, series, min, max, linkedZoom, coarseGrouping, syncCrosshair]);
 
   return (
     <VisualizerCard p={0}>
