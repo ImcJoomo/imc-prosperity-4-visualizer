@@ -1,7 +1,9 @@
-import { Center, Container, Grid, Title } from '@mantine/core';
-import { ReactNode, useMemo } from 'react';
-import { Navigate, useLocation } from 'react-router-dom';
+import { Center, Container, Grid, Loader, Stack, Text, Title } from '@mantine/core';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
+import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { getLog } from '../../api/logs.ts';
 import { useStore } from '../../store.ts';
+import { parseAlgorithmLogs } from '../../utils/algorithm.tsx';
 import { formatNumber } from '../../utils/format.ts';
 import { AlgorithmSummaryCard } from './AlgorithmSummaryCard.tsx';
 import { CandlestickChart } from './CandlestickChart.tsx';
@@ -17,11 +19,63 @@ import { VisualizerCard } from './VisualizerCard.tsx';
 import { VisualizerToolbar } from './VisualizerToolbar.tsx';
 
 export function VisualizerPage(): ReactNode {
+  const { logName } = useParams<{ logName?: string }>();
   const algorithm = useStore(state => state.algorithm);
+  const setAlgorithm = useStore(state => state.setAlgorithm);
   const hiddenSymbols = useStore(state => state.visualizerHiddenSymbols);
   const hiddenSet = useMemo(() => new Set(hiddenSymbols), [hiddenSymbols]);
 
   const { search } = useLocation();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load from server if logName is provided
+  useEffect(() => {
+    if (!logName) return;
+
+    setLoading(true);
+    setError(null);
+
+    getLog(logName)
+      .then(resultLog => {
+        const algo = parseAlgorithmLogs(resultLog);
+        setAlgorithm(algo);
+      })
+      .catch(err => {
+        setError(err.message || 'Failed to load log');
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [logName, setAlgorithm]);
+
+  if (loading) {
+    return (
+      <Container>
+        <Center style={{ height: '50vh' }}>
+          <Stack align="center" gap="md">
+            <Loader size="lg" />
+            <Text>Loading log: {logName}</Text>
+          </Stack>
+        </Center>
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container>
+        <Center style={{ height: '50vh' }}>
+          <Stack align="center" gap="md">
+            <Text c="red" size="lg">
+              Error: {error}
+            </Text>
+            <Text c="dimmed">Log name: {logName}</Text>
+          </Stack>
+        </Center>
+      </Container>
+    );
+  }
 
   if (algorithm === null) {
     return <Navigate to={`/${search}`} />;

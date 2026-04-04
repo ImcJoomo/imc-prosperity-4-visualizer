@@ -4,6 +4,7 @@ import { ScrollableCodeHighlight } from '../../components/ScrollableCodeHighligh
 import { HomeCard } from './HomeCard.tsx';
 import { LoadFromFile } from './LoadFromFile.tsx';
 import { LoadFromUrl } from './LoadFromUrl.tsx';
+import { SavedLogs } from './SavedLogs.tsx';
 
 export function HomePage(): ReactNode {
   const exampleCode = `
@@ -181,6 +182,7 @@ class Trader:
 
         <LoadFromFile />
         <LoadFromUrl />
+        <SavedLogs />
       </Stack>
     </Container>
   );

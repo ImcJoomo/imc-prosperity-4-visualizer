@@ -9,6 +9,7 @@ export interface State {
 
   idToken: string;
   round: string;
+  username: string;
 
   algorithm: Algorithm | null;
 
@@ -30,6 +31,7 @@ export interface State {
   setColorScheme: (colorScheme: MantineColorScheme) => void;
   setIdToken: (idToken: string) => void;
   setRound: (round: string) => void;
+  setUsername: (username: string) => void;
   setAlgorithm: (algorithm: Algorithm | null) => void;
   setVisualizerLinkedZoom: (value: boolean) => void;
   setVisualizerPriceNormalization: (value: boolean) => void;
@@ -54,6 +56,7 @@ export const useStore = create<State>()(
 
       idToken: '',
       round: 'ROUND0',
+      username: '',
 
       algorithm: null,
 
@@ -75,6 +78,7 @@ export const useStore = create<State>()(
       setColorScheme: colorScheme => set({ colorScheme }),
       setIdToken: idToken => set({ idToken }),
       setRound: round => set({ round }),
+      setUsername: username => set({ username }),
       setAlgorithm: algorithm => set({ algorithm }),
       setVisualizerLinkedZoom: value => set({ visualizerLinkedZoom: value }),
       setVisualizerPriceNormalization: value => set({ visualizerPriceNormalization: value }),
@@ -97,6 +101,7 @@ export const useStore = create<State>()(
         colorScheme: state.colorScheme,
         idToken: state.idToken,
         round: state.round,
+        username: state.username,
       }),
     },
   ),

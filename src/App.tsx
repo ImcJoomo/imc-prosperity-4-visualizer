@@ -35,6 +35,7 @@ const router = createBrowserRouter(
     <Route path="/" element={<BasePage />}>
       <Route path="/" element={<HomePage />} />
       <Route path="/visualizer" element={<VisualizerPage />} />
+      <Route path="/visualizer/:logName" element={<VisualizerPage />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Route>,
   ),
