@@ -32,6 +32,7 @@ export function LoadFromFile(): ReactNode {
   const username = useStore(state => state.username);
   const setUsername = useStore(state => state.setUsername);
   const setAlgorithm = useStore(state => state.setAlgorithm);
+  const setCurrentLogName = useStore(state => state.setCurrentLogName);
 
   // Generate prefixed name
   const getPrefixedName = (baseName: string): string => {
@@ -60,6 +61,7 @@ export function LoadFromFile(): ReactNode {
               const finalName = getPrefixedName(baseName);
               try {
                 const result = await saveLog(finalName, resultLog);
+                setCurrentLogName(result.name);
                 navigate(`/visualizer/${encodeURIComponent(result.name)}`);
               } catch (saveErr) {
                 // Still navigate even if save fails, just log the error

@@ -7,6 +7,7 @@ import { ReactNode } from 'react';
 import { createBrowserRouter, createRoutesFromElements, Navigate, Route, RouterProvider } from 'react-router-dom';
 import { BasePage } from './pages/base/BasePage.tsx';
 import { HomePage } from './pages/home/HomePage.tsx';
+import { TradeHistoryPage } from './pages/trades/TradeHistoryPage.tsx';
 import { VisualizerPage } from './pages/visualizer/VisualizerPage.tsx';
 import { useStore } from './store.ts';
 
@@ -36,6 +37,8 @@ const router = createBrowserRouter(
       <Route path="/" element={<HomePage />} />
       <Route path="/visualizer" element={<VisualizerPage />} />
       <Route path="/visualizer/:logName" element={<VisualizerPage />} />
+      <Route path="/trades" element={<TradeHistoryPage />} />
+      <Route path="/trades/:logName" element={<TradeHistoryPage />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Route>,
   ),

@@ -12,6 +12,7 @@ export interface State {
   username: string;
 
   algorithm: Algorithm | null;
+  currentLogName: string | null;
 
   visualizerLinkedZoom: boolean;
   visualizerPriceNormalization: boolean;
@@ -33,6 +34,7 @@ export interface State {
   setRound: (round: string) => void;
   setUsername: (username: string) => void;
   setAlgorithm: (algorithm: Algorithm | null) => void;
+  setCurrentLogName: (name: string | null) => void;
   setVisualizerLinkedZoom: (value: boolean) => void;
   setVisualizerPriceNormalization: (value: boolean) => void;
   setVisualizerNormalizationReference: (value: NormalizationReference) => void;
@@ -59,6 +61,7 @@ export const useStore = create<State>()(
       username: '',
 
       algorithm: null,
+      currentLogName: null,
 
       visualizerLinkedZoom: true,
       visualizerPriceNormalization: false,
@@ -80,6 +83,7 @@ export const useStore = create<State>()(
       setRound: round => set({ round }),
       setUsername: username => set({ username }),
       setAlgorithm: algorithm => set({ algorithm }),
+      setCurrentLogName: name => set({ currentLogName: name }),
       setVisualizerLinkedZoom: value => set({ visualizerLinkedZoom: value }),
       setVisualizerPriceNormalization: value => set({ visualizerPriceNormalization: value }),
       setVisualizerNormalizationReference: value => set({ visualizerNormalizationReference: value }),
@@ -102,6 +106,7 @@ export const useStore = create<State>()(
         idToken: state.idToken,
         round: state.round,
         username: state.username,
+        currentLogName: state.currentLogName,
       }),
     },
   ),

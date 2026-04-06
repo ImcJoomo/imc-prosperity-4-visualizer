@@ -22,6 +22,8 @@ export function VisualizerPage(): ReactNode {
   const { logName } = useParams<{ logName?: string }>();
   const algorithm = useStore(state => state.algorithm);
   const setAlgorithm = useStore(state => state.setAlgorithm);
+  const currentLogName = useStore(state => state.currentLogName);
+  const setCurrentLogName = useStore(state => state.setCurrentLogName);
   const hiddenSymbols = useStore(state => state.visualizerHiddenSymbols);
   const hiddenSet = useMemo(() => new Set(hiddenSymbols), [hiddenSymbols]);
 
@@ -29,17 +31,21 @@ export function VisualizerPage(): ReactNode {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load from server if logName is provided
+  // Determine which log name to load: URL param takes priority, then persisted name
+  const effectiveLogName = logName || (!algorithm ? currentLogName : null);
+
+  // Load from server if we have a log name to load
   useEffect(() => {
-    if (!logName) return;
+    if (!effectiveLogName) return;
 
     setLoading(true);
     setError(null);
 
-    getLog(logName)
+    getLog(effectiveLogName)
       .then(resultLog => {
         const algo = parseAlgorithmLogs(resultLog);
         setAlgorithm(algo);
+        setCurrentLogName(effectiveLogName);
       })
       .catch(err => {
         setError(err.message || 'Failed to load log');
@@ -47,7 +53,7 @@ export function VisualizerPage(): ReactNode {
       .finally(() => {
         setLoading(false);
       });
-  }, [logName, setAlgorithm]);
+  }, [effectiveLogName, setAlgorithm, setCurrentLogName]);
 
   if (loading) {
     return (
@@ -77,8 +83,21 @@ export function VisualizerPage(): ReactNode {
     );
   }
 
-  if (algorithm === null) {
+  if (algorithm === null && !effectiveLogName) {
     return <Navigate to={`/${search}`} />;
+  }
+
+  if (algorithm === null) {
+    return (
+      <Container>
+        <Center style={{ height: '50vh' }}>
+          <Stack align="center" gap="md">
+            <Loader size="lg" />
+            <Text>Loading log: {effectiveLogName}</Text>
+          </Stack>
+        </Center>
+      </Container>
+    );
   }
 
   const conversionProducts = new Set();
