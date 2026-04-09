@@ -2,8 +2,11 @@ import { Center, Container, Grid, Loader, Stack, Text, Title } from '@mantine/co
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
 import { getLog } from '../../api/logs.ts';
+import { ParseSettingsModal } from '../../components/ParseSettingsModal.tsx';
+import type { ResultLog } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { parseAlgorithmLogs } from '../../utils/algorithm.tsx';
+import { shouldApplyAssetFilter } from '../../utils/resultLogAssetFilter.ts';
 import { formatNumber } from '../../utils/format.ts';
 import { AlgorithmSummaryCard } from './AlgorithmSummaryCard.tsx';
 import { CandlestickChart } from './CandlestickChart.tsx';
@@ -30,22 +33,24 @@ export function VisualizerPage(): ReactNode {
   const { search } = useLocation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [parseModalOpen, setParseModalOpen] = useState(false);
+  const [pendingResultLog, setPendingResultLog] = useState<ResultLog | null>(null);
 
-  // Determine which log name to load: URL param takes priority, then persisted name
   const effectiveLogName = logName || (!algorithm ? currentLogName : null);
 
-  // Load from server if we have a log name to load
   useEffect(() => {
     if (!effectiveLogName) return;
 
     setLoading(true);
     setError(null);
+    setAlgorithm(null);
+    setParseModalOpen(false);
+    setPendingResultLog(null);
 
     getLog(effectiveLogName)
       .then(resultLog => {
-        const algo = parseAlgorithmLogs(resultLog);
-        setAlgorithm(algo);
-        setCurrentLogName(effectiveLogName);
+        setPendingResultLog(resultLog);
+        setParseModalOpen(true);
       })
       .catch(err => {
         setError(err.message || 'Failed to load log');
@@ -53,7 +58,7 @@ export function VisualizerPage(): ReactNode {
       .finally(() => {
         setLoading(false);
       });
-  }, [effectiveLogName, setAlgorithm, setCurrentLogName]);
+  }, [effectiveLogName, setAlgorithm]);
 
   if (loading) {
     return (
@@ -61,7 +66,7 @@ export function VisualizerPage(): ReactNode {
         <Center style={{ height: '50vh' }}>
           <Stack align="center" gap="md">
             <Loader size="lg" />
-            <Text>Loading log: {logName}</Text>
+            <Text>Loading log: {logName ?? effectiveLogName}</Text>
           </Stack>
         </Center>
       </Container>
@@ -76,10 +81,47 @@ export function VisualizerPage(): ReactNode {
             <Text c="red" size="lg">
               Error: {error}
             </Text>
-            <Text c="dimmed">Log name: {logName}</Text>
+            <Text c="dimmed">Log name: {logName ?? effectiveLogName}</Text>
           </Stack>
         </Center>
       </Container>
+    );
+  }
+
+  if (parseModalOpen && pendingResultLog) {
+    return (
+      <>
+        <ParseSettingsModal
+          opened={parseModalOpen}
+          resultLog={pendingResultLog}
+          title="Parse settings (server log)"
+          onCancel={() => {
+            setParseModalOpen(false);
+            setPendingResultLog(null);
+          }}
+          onConfirm={assetKeys => {
+            if (!pendingResultLog) {
+              return;
+            }
+            const applied = shouldApplyAssetFilter(pendingResultLog, assetKeys);
+            const alg = parseAlgorithmLogs(pendingResultLog, undefined, { assetKeys });
+            setAlgorithm(
+              alg,
+              applied && assetKeys.length > 0 ? { visibilityIncludedProducts: assetKeys } : undefined,
+            );
+            setCurrentLogName(effectiveLogName);
+            setParseModalOpen(false);
+            setPendingResultLog(null);
+          }}
+        />
+        <Container>
+          <Center style={{ height: '40vh' }}>
+            <Text c="dimmed" size="sm">
+              Choose which assets to include, then parse.
+            </Text>
+          </Center>
+        </Container>
+      </>
     );
   }
 
@@ -88,16 +130,7 @@ export function VisualizerPage(): ReactNode {
   }
 
   if (algorithm === null) {
-    return (
-      <Container>
-        <Center style={{ height: '50vh' }}>
-          <Stack align="center" gap="md">
-            <Loader size="lg" />
-            <Text>Loading log: {effectiveLogName}</Text>
-          </Stack>
-        </Center>
-      </Container>
-    );
+    return <Navigate to={`/${search}`} />;
   }
 
   const conversionProducts = new Set();

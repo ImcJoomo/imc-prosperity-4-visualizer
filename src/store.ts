@@ -3,6 +3,11 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Algorithm } from './models.ts';
 import { NormalizationReference } from './utils/priceNormalization.ts';
+import { hiddenSymbolsForIncludedProducts } from './utils/visualizerSymbols.ts';
+
+export interface SetAlgorithmOptions {
+  visibilityIncludedProducts?: string[] | null;
+}
 
 export interface State {
   colorScheme: MantineColorScheme;
@@ -33,7 +38,7 @@ export interface State {
   setIdToken: (idToken: string) => void;
   setRound: (round: string) => void;
   setUsername: (username: string) => void;
-  setAlgorithm: (algorithm: Algorithm | null) => void;
+  setAlgorithm: (algorithm: Algorithm | null, options?: SetAlgorithmOptions) => void;
   setCurrentLogName: (name: string | null) => void;
   setVisualizerLinkedZoom: (value: boolean) => void;
   setVisualizerPriceNormalization: (value: boolean) => void;
@@ -82,7 +87,16 @@ export const useStore = create<State>()(
       setIdToken: idToken => set({ idToken }),
       setRound: round => set({ round }),
       setUsername: username => set({ username }),
-      setAlgorithm: algorithm => set({ algorithm }),
+      setAlgorithm: (algorithm, options) => {
+        if (!algorithm) {
+          set({ algorithm: null, visualizerHiddenSymbols: [] });
+          return;
+        }
+        const included = options?.visibilityIncludedProducts;
+        const visualizerHiddenSymbols =
+          included && included.length > 0 ? hiddenSymbolsForIncludedProducts(algorithm, included) : [];
+        set({ algorithm, visualizerHiddenSymbols });
+      },
       setCurrentLogName: name => set({ currentLogName: name }),
       setVisualizerLinkedZoom: value => set({ visualizerLinkedZoom: value }),
       setVisualizerPriceNormalization: value => set({ visualizerPriceNormalization: value }),

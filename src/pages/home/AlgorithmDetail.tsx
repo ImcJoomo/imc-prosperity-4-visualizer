@@ -1,8 +1,9 @@
 import { Accordion, Button, Group, MantineColor, Text } from '@mantine/core';
 import axios from 'axios';
-import { ReactNode } from 'react';
+import { ReactNode, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ErrorAlert } from '../../components/ErrorAlert';
+import { ParseSettingsModal } from '../../components/ParseSettingsModal.tsx';
 import { ScrollableCodeHighlight } from '../../components/ScrollableCodeHighlight.tsx';
 import { useActualColorScheme } from '../../hooks/use-actual-color-scheme.ts';
 import { useAsync } from '../../hooks/use-async.ts';
@@ -15,6 +16,8 @@ import {
   parseAlgorithmLogs,
 } from '../../utils/algorithm.tsx';
 import { formatNumber, formatTimestamp } from '../../utils/format.ts';
+import { parseUploadedLogTextToResultLog } from '../../utils/parseUploadedLogText.ts';
+import { shouldApplyAssetFilter } from '../../utils/resultLogAssetFilter.ts';
 
 export interface AlgorithmDetailProps {
   position: number;
@@ -24,6 +27,8 @@ export interface AlgorithmDetailProps {
 
 export function AlgorithmDetail({ position, algorithm, proxy }: AlgorithmDetailProps): ReactNode {
   const setAlgorithm = useStore(state => state.setAlgorithm);
+  const [parseModalOpen, setParseModalOpen] = useState(false);
+  const [pendingResultLog, setPendingResultLog] = useState<ResultLog | null>(null);
 
   const navigate = useNavigate();
   const colorScheme = useActualColorScheme();
@@ -48,10 +53,13 @@ export function AlgorithmDetail({ position, algorithm, proxy }: AlgorithmDetailP
 
   const openInVisualizer = useAsync<void>(async () => {
     const logsUrl = await getAlgorithmLogsUrl(algorithm.id);
-    const logsResponse = await axios.get<ResultLog>(proxy + logsUrl);
-    const alg = parseAlgorithmLogs(logsResponse.data, algorithm);
-    setAlgorithm(alg);
-    navigate('/visualizer');
+    const res = await axios.get<string>(proxy + logsUrl, {
+      responseType: 'text',
+      transformResponse: r => r,
+    });
+    const raw = parseUploadedLogTextToResultLog(res.data);
+    setPendingResultLog(raw);
+    setParseModalOpen(true);
   });
 
   let title = `${algorithm.fileName} • ${formatTimestamp(algorithm.timestamp)}`;
@@ -72,6 +80,26 @@ export function AlgorithmDetail({ position, algorithm, proxy }: AlgorithmDetailP
 
   return (
     <Accordion.Item key={algorithm.id} value={algorithm.id}>
+      <ParseSettingsModal
+        opened={parseModalOpen}
+        resultLog={pendingResultLog}
+        title="Parse settings"
+        onCancel={() => {
+          setParseModalOpen(false);
+          setPendingResultLog(null);
+        }}
+        onConfirm={assetKeys => {
+          if (!pendingResultLog) {
+            return;
+          }
+          const applied = shouldApplyAssetFilter(pendingResultLog, assetKeys);
+          const alg = parseAlgorithmLogs(pendingResultLog, algorithm, { assetKeys });
+          setAlgorithm(alg, applied && assetKeys.length > 0 ? { visibilityIncludedProducts: assetKeys } : undefined);
+          setParseModalOpen(false);
+          setPendingResultLog(null);
+          navigate('/visualizer');
+        }}
+      />
       <Accordion.Control>
         <Text c={statusColor}>
           <b>{position}.</b> {title}

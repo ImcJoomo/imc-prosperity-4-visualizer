@@ -25,11 +25,23 @@ import {
 } from '../models.ts';
 import { authenticatedAxios } from './axios.ts';
 import { microPriceFromTopOfBook } from './microPrice.ts';
+import { prepareProsperity3ResultLogForP4Visualizer } from './prosperity3ResultLog.ts';
+import { filterResultLogByAssets, shouldApplyAssetFilter } from './resultLogAssetFilter.ts';
+
+export { isProsperity3ResultLog } from './prosperity3ResultLog.ts';
+export {
+  isProsperity3BacktesterConsoleLogText,
+  parseProsperity3BacktesterConsoleLog,
+} from './prosperity3ConsoleLog.ts';
 
 export class AlgorithmParseError extends Error {
   public constructor(public readonly node: ReactNode) {
     super('Failed to parse algorithm logs');
   }
+}
+
+export interface ParseAlgorithmLogsOptions {
+  assetKeys?: string[] | null;
 }
 
 function getColumnValues(columns: string[], indices: number[]): number[] {
@@ -199,6 +211,39 @@ function decompressDataRow(compressed: CompressedAlgorithmDataRow, sandboxLogs: 
   };
 }
 
+function pruneRecordKeys<T>(rec: Record<string, T>, keep: Set<string>): Record<string, T> {
+  const out: Record<string, T> = {};
+  for (const k of Object.keys(rec)) {
+    if (keep.has(k)) {
+      out[k] = rec[k] as T;
+    }
+  }
+  return out;
+}
+
+function pruneTradingStateForAssets(state: TradingState, keep: Set<string>): TradingState {
+  return {
+    ...state,
+    listings: pruneRecordKeys(state.listings, keep),
+    orderDepths: pruneRecordKeys(state.orderDepths, keep),
+    ownTrades: pruneRecordKeys(state.ownTrades, keep),
+    marketTrades: pruneRecordKeys(state.marketTrades, keep),
+    position: pruneRecordKeys(state.position, keep),
+    observations: {
+      plainValueObservations: pruneRecordKeys(state.observations.plainValueObservations, keep),
+      conversionObservations: pruneRecordKeys(state.observations.conversionObservations, keep),
+    },
+  };
+}
+
+function pruneAlgorithmDataRows(data: AlgorithmDataRow[], keep: Set<string>): AlgorithmDataRow[] {
+  return data.map(row => ({
+    ...row,
+    state: pruneTradingStateForAssets(row.state, keep),
+    orders: pruneRecordKeys(row.orders, keep),
+  }));
+}
+
 function getAlgorithmData(resultLog: ResultLog): AlgorithmDataRow[] {
   const rows: AlgorithmDataRow[] = [];
   const nextSandboxLogs = '';
@@ -256,9 +301,22 @@ function getAlgorithmData(resultLog: ResultLog): AlgorithmDataRow[] {
   return rows;
 }
 
-export function parseAlgorithmLogs(resultLog: ResultLog, summary?: AlgorithmSummary): Algorithm {
+export function parseAlgorithmLogs(
+  resultLog: ResultLog,
+  summary?: AlgorithmSummary,
+  options?: ParseAlgorithmLogsOptions,
+): Algorithm {
+  resultLog = prepareProsperity3ResultLogForP4Visualizer(resultLog);
+  const assetKeys = options?.assetKeys;
+  const appliedAssetFilter = Boolean(assetKeys && shouldApplyAssetFilter(resultLog, assetKeys));
+  if (appliedAssetFilter && assetKeys) {
+    resultLog = filterResultLogByAssets(resultLog, new Set(assetKeys));
+  }
   const activityLogs = getActivityLogs(resultLog.activitiesLog);
-  const data = getAlgorithmData(resultLog);
+  let data = getAlgorithmData(resultLog);
+  if (appliedAssetFilter && assetKeys && assetKeys.length > 0) {
+    data = pruneAlgorithmDataRows(data, new Set(assetKeys));
+  }
 
   if (activityLogs.length === 0 && data.length === 0) {
     throw new AlgorithmParseError(

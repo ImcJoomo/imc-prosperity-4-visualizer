@@ -1,4 +1,4 @@
-import { Algorithm } from '../models.ts';
+import type { Algorithm } from '../models.ts';
 
 export function collectAllProductKeysForVisibility(algorithm: Algorithm): string[] {
   const keys = new Set<string>();
@@ -12,4 +12,9 @@ export function collectAllProductKeysForVisibility(algorithm: Algorithm): string
     }
   }
   return [...keys].sort((a, b) => a.localeCompare(b));
+}
+
+export function hiddenSymbolsForIncludedProducts(algorithm: Algorithm, includedProducts: string[]): string[] {
+  const keep = new Set(includedProducts);
+  return collectAllProductKeysForVisibility(algorithm).filter(k => !keep.has(k));
 }

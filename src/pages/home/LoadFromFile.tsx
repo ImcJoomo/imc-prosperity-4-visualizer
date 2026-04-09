@@ -1,14 +1,17 @@
-import { Badge, Checkbox, Group, Stack, Text, TextInput } from '@mantine/core';
+import { Badge, Checkbox, Code, Group, Stack, Text, TextInput } from '@mantine/core';
 import { Dropzone, FileRejection } from '@mantine/dropzone';
 import { IconUpload, IconUser } from '@tabler/icons-react';
 import { ReactNode, useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { saveLog } from '../../api/logs.ts';
 import { ErrorAlert } from '../../components/ErrorAlert.tsx';
+import { ParseSettingsModal } from '../../components/ParseSettingsModal.tsx';
 import { useAsync } from '../../hooks/use-async.ts';
 import { ResultLog } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { parseAlgorithmLogs } from '../../utils/algorithm.tsx';
+import { parseUploadedLogTextToResultLog } from '../../utils/parseUploadedLogText.ts';
+import { shouldApplyAssetFilter } from '../../utils/resultLogAssetFilter.ts';
 import { HomeCard } from './HomeCard.tsx';
 
 function DropzoneContent(): ReactNode {
@@ -28,13 +31,15 @@ export function LoadFromFile(): ReactNode {
   const [error, setError] = useState<Error>();
   const [saveToServer, setSaveToServer] = useState(true);
   const [logName, setLogName] = useState('');
+  const [parseModalOpen, setParseModalOpen] = useState(false);
+  const [pendingResultLog, setPendingResultLog] = useState<ResultLog | null>(null);
+  const [pendingFileName, setPendingFileName] = useState<string>('');
 
   const username = useStore(state => state.username);
   const setUsername = useStore(state => state.setUsername);
   const setAlgorithm = useStore(state => state.setAlgorithm);
   const setCurrentLogName = useStore(state => state.setCurrentLogName);
 
-  // Generate prefixed name
   const getPrefixedName = (baseName: string): string => {
     const trimmedUsername = username.trim();
     const trimmedName = baseName.trim();
@@ -51,28 +56,13 @@ export function LoadFromFile(): ReactNode {
 
         reader.addEventListener('load', async () => {
           try {
-            const resultLog = JSON.parse(reader.result as string) as ResultLog;
-            const algorithm = parseAlgorithmLogs(resultLog);
-            setAlgorithm(algorithm);
-
-            // Save to server if enabled
-            if (saveToServer) {
-              const baseName = logName.trim() || files[0].name.replace(/\.[^/.]+$/, '');
-              const finalName = getPrefixedName(baseName);
-              try {
-                const result = await saveLog(finalName, resultLog);
-                setCurrentLogName(result.name);
-                navigate(`/visualizer/${encodeURIComponent(result.name)}`);
-              } catch (saveErr) {
-                // Still navigate even if save fails, just log the error
-                console.warn('Failed to save to server:', saveErr);
-                navigate('/visualizer');
-              }
-            } else {
-              navigate('/visualizer');
-            }
+            const text = reader.result as string;
+            const resultLog = parseUploadedLogTextToResultLog(text);
+            setPendingFileName(files[0].name.replace(/\.[^/.]+$/, ''));
+            setPendingResultLog(resultLog);
+            setParseModalOpen(true);
             resolve();
-          } catch (err: any) {
+          } catch (err: unknown) {
             reject(err);
           }
         });
@@ -102,18 +92,61 @@ export function LoadFromFile(): ReactNode {
     setError(new Error(messages.join('<br/>')));
   }, []);
 
-  // Preview of final log name
   const previewName = saveToServer
     ? getPrefixedName(logName.trim() || 'filename')
     : null;
 
+  const finalizeParse = useCallback(
+    async (assetKeys: string[]) => {
+      if (!pendingResultLog) {
+        return;
+      }
+      const applied = shouldApplyAssetFilter(pendingResultLog, assetKeys);
+      const algorithm = parseAlgorithmLogs(pendingResultLog, undefined, { assetKeys });
+      setAlgorithm(algorithm, applied && assetKeys.length > 0 ? { visibilityIncludedProducts: assetKeys } : undefined);
+      setParseModalOpen(false);
+      const toSave = pendingResultLog;
+      setPendingResultLog(null);
+      const baseName = logName.trim() || pendingFileName;
+      const u = username.trim();
+      const finalName = u ? `${u}_${baseName}` : baseName;
+      if (saveToServer) {
+        try {
+          const result = await saveLog(finalName, toSave);
+          setCurrentLogName(result.name);
+          navigate(`/visualizer/${encodeURIComponent(result.name)}`);
+        } catch {
+          navigate('/visualizer');
+        }
+      } else {
+        navigate('/visualizer');
+      }
+    },
+    [pendingResultLog, pendingFileName, logName, saveToServer, username, setAlgorithm, setCurrentLogName, navigate],
+  );
+
   return (
     <HomeCard title="Load from file">
+      <ParseSettingsModal
+        opened={parseModalOpen}
+        resultLog={pendingResultLog}
+        onCancel={() => {
+          setParseModalOpen(false);
+          setPendingResultLog(null);
+        }}
+        onConfirm={assetKeys => {
+          void finalizeParse(assetKeys);
+        }}
+      />
       <Stack gap="sm">
         <Text>
           Supports log files that are in the same format as the ones generated by the Prosperity servers. This format is
           undocumented, but you can get an idea of what it looks like by downloading a log file from a submitted
           algorithm.
+        </Text>
+        <Text size="sm" c="dimmed">
+          JSON (submission / export_resultlog) or prosperity3bt console <Code>.log</Code> (Sandbox + Activities + Trade
+          History).
         </Text>
 
         <Group align="flex-end">
