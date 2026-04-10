@@ -32,6 +32,7 @@ export function VisualizerPage(): ReactNode {
 
   const { search } = useLocation();
   const [loading, setLoading] = useState(false);
+  const [hasRequestedLogLoad, setHasRequestedLogLoad] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [parseModalOpen, setParseModalOpen] = useState(false);
   const [pendingResultLog, setPendingResultLog] = useState<ResultLog | null>(null);
@@ -41,6 +42,7 @@ export function VisualizerPage(): ReactNode {
   useEffect(() => {
     if (!effectiveLogName) return;
 
+    setHasRequestedLogLoad(true);
     setLoading(true);
     setError(null);
     setAlgorithm(null);
@@ -130,6 +132,19 @@ export function VisualizerPage(): ReactNode {
   }
 
   if (algorithm === null) {
+    if (!hasRequestedLogLoad) {
+      return (
+        <Container>
+          <Center style={{ height: '50vh' }}>
+            <Stack align="center" gap="md">
+              <Loader size="lg" />
+              <Text>Opening log: {logName ?? effectiveLogName}</Text>
+            </Stack>
+          </Center>
+        </Container>
+      );
+    }
+
     return <Navigate to={`/${search}`} />;
   }
 
