@@ -1,5 +1,6 @@
 import Highcharts from 'highcharts';
 import { ReactNode } from 'react';
+import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
 import { ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { Chart } from './Chart.tsx';
@@ -10,21 +11,13 @@ export interface TransportChartProps {
 
 export function TransportChart({ symbol }: TransportChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
-
-  const transportFeesData = [];
-  const importTariffData = [];
-  const exportTariffData = [];
-
-  for (const row of algorithm.data) {
-    const observation = row.state.observations.conversionObservations[symbol];
-    if (observation === undefined) {
-      continue;
-    }
-
-    transportFeesData.push([row.state.timestamp, observation.transportFees]);
-    importTariffData.push([row.state.timestamp, observation.importTariff]);
-    exportTariffData.push([row.state.timestamp, observation.exportTariff]);
-  }
+  const symbolCache = algorithm.chartCache?.bySymbol[symbol];
+  const serverData = useServerChartData<{
+    series: { transportFees: [number, number][]; importTariff: [number, number][]; exportTariff: [number, number][] };
+  }>('transport', { symbol }, [symbol]);
+  const transportFeesData = serverData.data?.series.transportFees ?? symbolCache?.conversion.transportFees ?? [];
+  const importTariffData = serverData.data?.series.importTariff ?? symbolCache?.conversion.importTariff ?? [];
+  const exportTariffData = serverData.data?.series.exportTariff ?? symbolCache?.conversion.exportTariff ?? [];
 
   const series: Highcharts.SeriesOptionsType[] = [
     { type: 'line', name: 'Transport fees', data: transportFeesData },

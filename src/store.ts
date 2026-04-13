@@ -33,6 +33,8 @@ export interface State {
   visualizerDetailTimestamp: number | null;
   visualizerHiddenSymbols: string[];
   visualizerSyncCrosshair: boolean;
+  visualizerRangeMin: number | null;
+  visualizerRangeMax: number | null;
 
   setColorScheme: (colorScheme: MantineColorScheme) => void;
   setIdToken: (idToken: string) => void;
@@ -54,6 +56,7 @@ export interface State {
   setVisualizerDetailTimestamp: (value: number | null) => void;
   setVisualizerHiddenSymbols: (symbols: string[]) => void;
   setVisualizerSyncCrosshair: (value: boolean) => void;
+  setVisualizerRange: (min: number | null, max: number | null) => void;
 }
 
 export const useStore = create<State>()(
@@ -82,6 +85,8 @@ export const useStore = create<State>()(
       visualizerDetailTimestamp: null,
       visualizerHiddenSymbols: [],
       visualizerSyncCrosshair: true,
+      visualizerRangeMin: null,
+      visualizerRangeMax: null,
 
       setColorScheme: colorScheme => set({ colorScheme }),
       setIdToken: idToken => set({ idToken }),
@@ -89,13 +94,25 @@ export const useStore = create<State>()(
       setUsername: username => set({ username }),
       setAlgorithm: (algorithm, options) => {
         if (!algorithm) {
-          set({ algorithm: null, visualizerHiddenSymbols: [] });
+          set({
+            algorithm: null,
+            visualizerHiddenSymbols: [],
+            visualizerDetailTimestamp: null,
+            visualizerRangeMin: null,
+            visualizerRangeMax: null,
+          });
           return;
         }
         const included = options?.visibilityIncludedProducts;
         const visualizerHiddenSymbols =
           included && included.length > 0 ? hiddenSymbolsForIncludedProducts(algorithm, included) : [];
-        set({ algorithm, visualizerHiddenSymbols });
+        set({
+          algorithm,
+          visualizerHiddenSymbols,
+          visualizerDetailTimestamp: null,
+          visualizerRangeMin: null,
+          visualizerRangeMax: null,
+        });
       },
       setCurrentLogName: name => set({ currentLogName: name }),
       setVisualizerLinkedZoom: value => set({ visualizerLinkedZoom: value }),
@@ -112,6 +129,12 @@ export const useStore = create<State>()(
       setVisualizerDetailTimestamp: value => set({ visualizerDetailTimestamp: value }),
       setVisualizerHiddenSymbols: symbols => set({ visualizerHiddenSymbols: symbols }),
       setVisualizerSyncCrosshair: value => set({ visualizerSyncCrosshair: value }),
+      setVisualizerRange: (min, max) =>
+        set(state =>
+          state.visualizerRangeMin === min && state.visualizerRangeMax === max
+            ? state
+            : { visualizerRangeMin: min, visualizerRangeMax: max },
+        ),
     }),
     {
       name: 'imc-prosperity-4-visualizer',

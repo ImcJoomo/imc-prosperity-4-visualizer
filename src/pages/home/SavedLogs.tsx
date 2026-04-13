@@ -26,6 +26,7 @@ function formatDate(dateStr: string): string {
 }
 
 export function SavedLogs(): ReactNode {
+  const baseUrl = import.meta.env.BASE_URL;
   const navigate = useNavigate();
   const [logs, setLogs] = useState<SavedLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +106,7 @@ export function SavedLogs(): ReactNode {
       <HomeCard title="Saved Logs">
         <ErrorAlert error={error} />
         <Text size="sm" c="dimmed" mt="xs">
-          Make sure the log server is running on port 4174.
+          Make sure the visualizer server is reachable and authenticated.
         </Text>
       </HomeCard>
     );
@@ -164,7 +165,7 @@ export function SavedLogs(): ReactNode {
                       <ActionIcon
                         variant="subtle"
                         component="a"
-                        href={`/imc-prosperity-4-visualizer/visualizer/${encodeURIComponent(log.name)}`}
+                        href={`${baseUrl}visualizer/${encodeURIComponent(log.name)}`}
                         target="_blank"
                       >
                         <IconExternalLink size={16} />

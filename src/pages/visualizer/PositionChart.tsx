@@ -1,5 +1,6 @@
 import Highcharts from 'highcharts';
 import { ReactNode, useMemo, useState } from 'react';
+import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
 import { Algorithm, ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { type DeltaValueMode, deltaXYSeries } from '../../utils/seriesDelta.ts';
@@ -19,7 +20,8 @@ function getLimit(algorithm: Algorithm, symbol: ProsperitySymbol): number {
   // This code will be hit when a new product is added to the competition and the visualizer isn't updated yet
   // In that case the visualizer doesn't know the real limit yet, so we make a guess based on the algorithm's positions
 
-  const positions = algorithm.data.map(row => row.state.position[symbol] || 0);
+  const positions = (algorithm.chartCache?.bySymbol[symbol]?.position ?? algorithm.data.map(row => [row.state.timestamp, row.state.position[symbol] || 0]))
+    .map(([, position]) => position);
   const minPosition = Math.min(...positions);
   const maxPosition = Math.max(...positions);
 
@@ -34,6 +36,11 @@ export function PositionChart({ symbols }: PositionChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
   const [deltaEnabled, setDeltaEnabled] = useState(false);
   const [deltaValueMode, setDeltaValueMode] = useState<DeltaValueMode>('raw');
+  const serverData = useServerChartData<{ series: { bySymbol: Record<string, [number, number][]> } }>(
+    'position',
+    { symbols: symbols.join(',') },
+    [symbols.join(',')],
+  );
 
   const { series, title, min, max } = useMemo(() => {
     const limits: Record<string, number> = {};
@@ -41,22 +48,18 @@ export function PositionChart({ symbols }: PositionChartProps): ReactNode {
       limits[symbol] = getLimit(algorithm, symbol);
     }
 
-    const data: Record<string, [number, number][]> = {};
-    for (const symbol of symbols) {
-      data[symbol] = [];
-    }
-
-    for (const row of algorithm.data) {
-      for (const symbol of symbols) {
-        const position = row.state.position[symbol] || 0;
-        data[symbol].push([row.state.timestamp, (position / limits[symbol]) * 100]);
-      }
-    }
-
     const nextSeries: Highcharts.SeriesOptionsType[] = symbols.map((symbol, i) => ({
       type: 'line',
       name: symbol,
-      data: deltaEnabled ? deltaXYSeries(data[symbol], deltaValueMode) : data[symbol],
+      data: (() => {
+        const sourcePoints =
+          serverData.data?.series.bySymbol[symbol] ?? algorithm.chartCache?.bySymbol[symbol]?.position ?? [];
+        const points = sourcePoints.map(([timestamp, position]) => [timestamp, (position / limits[symbol]) * 100]) as [
+          number,
+          number,
+        ][];
+        return deltaEnabled ? deltaXYSeries(points, deltaValueMode) : points;
+      })(),
       colorIndex: (i + 1) % 10,
     }));
 
@@ -70,7 +73,7 @@ export function PositionChart({ symbols }: PositionChartProps): ReactNode {
       min: deltaEnabled ? undefined : -100,
       max: deltaEnabled ? undefined : 100,
     };
-  }, [algorithm, symbols, deltaEnabled, deltaValueMode]);
+  }, [algorithm, symbols, deltaEnabled, deltaValueMode, serverData.data]);
 
   return (
     <Chart

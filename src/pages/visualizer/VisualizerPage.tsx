@@ -1,11 +1,13 @@
 import { Center, Container, Grid, Loader, Stack, Text, Title } from '@mantine/core';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { getParsedAlgorithm } from '../../api/perf.ts';
 import { getLog } from '../../api/logs.ts';
 import { ParseSettingsModal } from '../../components/ParseSettingsModal.tsx';
 import type { ResultLog } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { parseAlgorithmLogs } from '../../utils/algorithm.tsx';
+import { isServerParsedLogsEnabled } from '../../utils/perfMode.ts';
 import { shouldApplyAssetFilter } from '../../utils/resultLogAssetFilter.ts';
 import { formatNumber } from '../../utils/format.ts';
 import { AlgorithmSummaryCard } from './AlgorithmSummaryCard.tsx';
@@ -48,6 +50,21 @@ export function VisualizerPage(): ReactNode {
     setAlgorithm(null);
     setParseModalOpen(false);
     setPendingResultLog(null);
+
+    if (isServerParsedLogsEnabled && logName) {
+      getParsedAlgorithm(effectiveLogName)
+        .then(parsedAlgorithm => {
+          setAlgorithm(parsedAlgorithm);
+          setCurrentLogName(effectiveLogName);
+        })
+        .catch(err => {
+          setError(err.message || 'Failed to load log');
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+      return;
+    }
 
     getLog(effectiveLogName)
       .then(resultLog => {
@@ -148,12 +165,8 @@ export function VisualizerPage(): ReactNode {
     return <Navigate to={`/${search}`} />;
   }
 
-  const conversionProducts = new Set();
-  for (const row of algorithm.data) {
-    for (const product of Object.keys(row.state.observations.conversionObservations)) {
-      conversionProducts.add(product);
-    }
-  }
+  const chartCache = algorithm.chartCache;
+  const conversionProducts = new Set(chartCache?.conversionSymbols ?? []);
 
   let profitLoss = 0;
   const lastTimestamp = algorithm.activityLogs[algorithm.activityLogs.length - 1].timestamp;
@@ -161,23 +174,8 @@ export function VisualizerPage(): ReactNode {
     profitLoss += algorithm.activityLogs[i].profitLoss;
   }
 
-  const symbols = new Set<string>();
-  const plainValueObservationSymbols = new Set<string>();
-
-  for (let i = 0; i < algorithm.data.length; i += 1000) {
-    const row = algorithm.data[i];
-
-    for (const key of Object.keys(row.state.listings)) {
-      symbols.add(key);
-    }
-
-    for (const key of Object.keys(row.state.observations.plainValueObservations)) {
-      plainValueObservationSymbols.add(key);
-    }
-  }
-
-  const sortedSymbols = [...symbols].sort((a, b) => a.localeCompare(b));
-  const sortedPlainValueObservationSymbols = [...plainValueObservationSymbols].sort((a, b) => a.localeCompare(b));
+  const sortedSymbols = chartCache?.listingSymbols ?? [];
+  const sortedPlainValueObservationSymbols = chartCache?.plainValueObservationSymbols ?? [];
   const visibleListingSymbols = sortedSymbols.filter(s => !hiddenSet.has(s));
 
   const symbolColumns: ReactNode[] = [];

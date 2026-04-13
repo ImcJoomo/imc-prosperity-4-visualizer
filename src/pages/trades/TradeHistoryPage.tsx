@@ -13,10 +13,12 @@ import {
 } from '@mantine/core';
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useParams } from 'react-router-dom';
+import { getParsedAlgorithm } from '../../api/perf.ts';
 import { getLog } from '../../api/logs.ts';
 import { Algorithm, Trade } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { parseAlgorithmLogs } from '../../utils/algorithm.tsx';
+import { isServerParsedLogsEnabled } from '../../utils/perfMode.ts';
 import { getAskColor, getBidColor } from '../../utils/colors.ts';
 import { formatNumber } from '../../utils/format.ts';
 import { VisualizerCard } from '../visualizer/VisualizerCard.tsx';
@@ -135,6 +137,16 @@ export function TradeHistoryPage(): ReactNode {
     if (!effectiveLogName) return;
     setLoading(true);
     setError(null);
+    if (isServerParsedLogsEnabled && logName) {
+      getParsedAlgorithm(effectiveLogName)
+        .then(parsedAlgorithm => {
+          setAlgorithm(parsedAlgorithm);
+          setCurrentLogName(effectiveLogName);
+        })
+        .catch(err => setError(err.message || 'Failed to load log'))
+        .finally(() => setLoading(false));
+      return;
+    }
     getLog(effectiveLogName)
       .then(resultLog => {
         setAlgorithm(parseAlgorithmLogs(resultLog));

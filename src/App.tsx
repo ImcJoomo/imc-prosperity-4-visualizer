@@ -43,7 +43,7 @@ const router = createBrowserRouter(
     </Route>,
   ),
   {
-    basename: '/imc-prosperity-4-visualizer/',
+    basename: import.meta.env.BASE_URL,
   },
 );
 

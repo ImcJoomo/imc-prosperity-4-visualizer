@@ -1,5 +1,6 @@
 import Highcharts from 'highcharts';
 import { ReactNode } from 'react';
+import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
 import { ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { Chart } from './Chart.tsx';
@@ -10,17 +11,8 @@ export interface PlainValueObservationChartProps {
 
 export function PlainValueObservationChart({ symbol }: PlainValueObservationChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
-
-  const values = [];
-
-  for (const row of algorithm.data) {
-    const observation = row.state.observations.plainValueObservations[symbol];
-    if (observation === undefined) {
-      continue;
-    }
-
-    values.push([row.state.timestamp, observation]);
-  }
+  const serverData = useServerChartData<{ series: { value: [number, number][] } }>('plain', { symbol }, [symbol]);
+  const values = serverData.data?.series.value ?? algorithm.chartCache?.bySymbol[symbol]?.plainValueObservation ?? [];
 
   const options: Highcharts.Options = {
     yAxis: {

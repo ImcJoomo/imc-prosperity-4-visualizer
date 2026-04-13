@@ -1,8 +1,7 @@
 import axios from 'axios';
 import { ResultLog } from '../models';
 
-// Use relative path in dev (proxy), absolute in production
-const API_BASE = import.meta.env.DEV ? '' : 'http://localhost:4174';
+const API_BASE = '';
 
 export interface SavedLog {
   name: string;

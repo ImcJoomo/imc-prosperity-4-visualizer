@@ -78,6 +78,25 @@ export function buildBaselineLookup(
   symbol: string,
   reference: NormalizationReference,
 ): (timestamp: number) => number | undefined {
+  const chartCache = algorithm.chartCache;
+
+  if (chartCache) {
+    const symbolCache = chartCache.bySymbol[symbol];
+
+    if (reference === MICRO_PRICE_REFERENCE || reference === 'mid') {
+      const pairs = symbolCache?.priceLevels.micro ?? [];
+      return baselineFromForwardFilledPairs(pairs);
+    }
+
+    if (reference === WALL_MID_REFERENCE) {
+      const pairs = symbolCache?.wallMid ?? [];
+      return baselineFromForwardFilledPairs(pairs);
+    }
+
+    const pairs = chartCache.plainValueObservations[reference] ?? [];
+    return baselineFromForwardFilledPairs(pairs);
+  }
+
   if (reference === MICRO_PRICE_REFERENCE || reference === 'mid') {
     const map = new Map<number, number>();
     for (const row of algorithm.activityLogs) {

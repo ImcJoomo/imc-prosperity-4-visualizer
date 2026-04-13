@@ -1,5 +1,6 @@
 import Highcharts from 'highcharts';
 import { ReactNode, useMemo, useState } from 'react';
+import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
 import { useStore } from '../../store.ts';
 import { aggregateSumByX, type DeltaValueMode, deltaXYSeries } from '../../utils/seriesDelta.ts';
 import { Chart } from './Chart.tsx';
@@ -13,19 +14,14 @@ export function ProfitLossChart({ symbols }: ProfitLossChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
   const [deltaEnabled, setDeltaEnabled] = useState(false);
   const [deltaValueMode, setDeltaValueMode] = useState<DeltaValueMode>('raw');
+  const serverData = useServerChartData<{ series: { total: [number, number][]; bySymbol: Record<string, [number, number][]> } }>(
+    'profit-loss',
+    { symbols: symbols.join(',') },
+    [symbols.join(',')],
+  );
 
   const series = useMemo((): Highcharts.SeriesOptionsType[] => {
-    const dataByTimestamp = new Map<number, number>();
-    for (const row of algorithm.activityLogs) {
-      if (!dataByTimestamp.has(row.timestamp)) {
-        dataByTimestamp.set(row.timestamp, row.profitLoss);
-      } else {
-        dataByTimestamp.set(row.timestamp, dataByTimestamp.get(row.timestamp)! + row.profitLoss);
-      }
-    }
-
-    const sortedTs = [...dataByTimestamp.keys()].sort((a, b) => a - b);
-    const totalTuples: [number, number][] = sortedTs.map(t => [t, dataByTimestamp.get(t)!]);
+    const totalTuples = serverData.data?.series.total ?? algorithm.chartCache?.totalProfitLoss ?? [];
 
     const nextSeries: Highcharts.SeriesOptionsType[] = [
       {
@@ -36,13 +32,8 @@ export function ProfitLossChart({ symbols }: ProfitLossChartProps): ReactNode {
     ];
 
     symbols.forEach(symbol => {
-      const symMap = new Map<number, number>();
-      for (const row of algorithm.activityLogs) {
-        if (row.product === symbol) {
-          symMap.set(row.timestamp, (symMap.get(row.timestamp) ?? 0) + row.profitLoss);
-        }
-      }
-      const symTuples = aggregateSumByX([...symMap.entries()]);
+      const symTuples =
+        serverData.data?.series.bySymbol[symbol] ?? algorithm.chartCache?.bySymbol[symbol]?.profitLoss ?? aggregateSumByX([]);
       nextSeries.push({
         type: 'line',
         name: symbol,
@@ -52,7 +43,7 @@ export function ProfitLossChart({ symbols }: ProfitLossChartProps): ReactNode {
     });
 
     return nextSeries;
-  }, [algorithm, symbols, deltaEnabled, deltaValueMode]);
+  }, [algorithm, symbols, deltaEnabled, deltaValueMode, serverData.data]);
 
   const title = deltaEnabled
     ? deltaValueMode === 'percent'

@@ -1,5 +1,6 @@
 import Highcharts from 'highcharts';
 import { ReactNode } from 'react';
+import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
 import { ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { Chart } from './Chart.tsx';
@@ -10,19 +11,14 @@ export interface EnvironmentChartProps {
 
 export function EnvironmentChart({ symbol }: EnvironmentChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
-
-  const sugarPriceData = [];
-  const sunlightIndexData = [];
-
-  for (const row of algorithm.data) {
-    const observation = row.state.observations.conversionObservations[symbol];
-    if (observation === undefined) {
-      continue;
-    }
-
-    sugarPriceData.push([row.state.timestamp, observation.sugarPrice]);
-    sunlightIndexData.push([row.state.timestamp, observation.sunlightIndex]);
-  }
+  const symbolCache = algorithm.chartCache?.bySymbol[symbol];
+  const serverData = useServerChartData<{ series: { sugarPrice: [number, number][]; sunlightIndex: [number, number][] } }>(
+    'environment',
+    { symbol },
+    [symbol],
+  );
+  const sugarPriceData = serverData.data?.series.sugarPrice ?? symbolCache?.conversion.sugarPrice ?? [];
+  const sunlightIndexData = serverData.data?.series.sunlightIndex ?? symbolCache?.conversion.sunlightIndex ?? [];
 
   const series: Highcharts.SeriesOptionsType[] = [
     { type: 'line', name: 'Sugar Price', marker: { symbol: 'square' }, yAxis: 0, data: sugarPriceData },

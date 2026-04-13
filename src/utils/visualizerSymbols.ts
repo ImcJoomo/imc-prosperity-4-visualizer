@@ -1,6 +1,11 @@
 import type { Algorithm } from '../models.ts';
 
 export function collectAllProductKeysForVisibility(algorithm: Algorithm): string[] {
+  if (algorithm.chartCache) {
+    return [...new Set([...algorithm.chartCache.listingSymbols, ...algorithm.chartCache.plainValueObservationSymbols])]
+      .sort((a, b) => a.localeCompare(b));
+  }
+
   const keys = new Set<string>();
   for (let i = 0; i < algorithm.data.length; i += 1000) {
     const row = algorithm.data[i];

@@ -1,6 +1,7 @@
 import { Group, SegmentedControl, Select, Stack } from '@mantine/core';
 import Highcharts from 'highcharts';
 import { ReactNode, useMemo, useState } from 'react';
+import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
 import { ActivityLogRow, ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { getAskColor, getBidColor } from '../../utils/colors.ts';
@@ -37,15 +38,30 @@ type ViewMode = 'movement' | 'price' | 'volume';
 
 export function CandlestickChart({ symbol }: CandlestickChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
+  const symbolCache = algorithm.chartCache?.bySymbol[symbol];
   const normEnabled = useStore(state => state.visualizerPriceNormalization);
   const normRef = useStore(state => state.visualizerNormalizationReference);
   const [deltaEnabled, setDeltaEnabled] = useState(false);
   const [deltaValueMode, setDeltaValueMode] = useState<DeltaValueMode>('raw');
   const [viewMode, setViewMode] = useState<ViewMode>('movement');
 
-  const rows = algorithm.activityLogs.filter(row => row.product === symbol);
+  const rows = symbolCache?.activityRows ?? algorithm.activityLogs.filter(row => row.product === symbol);
   const [groupSize, setGroupSize] = useState(() => defaultGroupSize(rows.length));
   const size = parseInt(groupSize);
+  const serverData = useServerChartData<
+    | { series: [number, number, number, number, number][] }
+    | {
+        series: {
+          bid3?: [number, number][];
+          bid2?: [number, number][];
+          bid1?: [number, number][];
+          micro?: [number, number][];
+          ask1?: [number, number][];
+          ask2?: [number, number][];
+          ask3?: [number, number][];
+        };
+      }
+  >('candlestick', { symbol, mode: viewMode, groupSize: size }, [symbol, viewMode, size]);
 
   const baseline = useMemo(
     () => buildBaselineLookup(algorithm, symbol, normRef),
@@ -58,6 +74,12 @@ export function CandlestickChart({ symbol }: CandlestickChartProps): ReactNode {
         return v;
       }
       return normalizePoint(baseline, row.timestamp, v) ?? v;
+    };
+    const applySeriesPrice = (timestamp: number, value: number): number => {
+      if (!normEnabled || viewMode === 'volume') {
+        return value;
+      }
+      return normalizePoint(baseline, timestamp, value) ?? value;
     };
 
     let nextSeries: Highcharts.SeriesOptionsType[] = [];
@@ -87,32 +109,43 @@ export function CandlestickChart({ symbol }: CandlestickChartProps): ReactNode {
 
     if (viewMode === 'movement') {
       nextTitle = `${symbol} - Price Movement${normSuffix}${deltaSuffix}`;
-      const candleData: [number, number, number, number, number][] = [];
+      const remoteCandles = Array.isArray(serverData.data?.series) ? serverData.data.series : null;
+      const candleData: [number, number, number, number, number][] =
+        remoteCandles?.map(([timestamp, open, high, low, close]) => [
+          timestamp,
+          applySeriesPrice(timestamp, open),
+          applySeriesPrice(timestamp, high),
+          applySeriesPrice(timestamp, low),
+          applySeriesPrice(timestamp, close),
+        ]) ??
+        (() => {
+          const localCandles: [number, number, number, number, number][] = [];
+          for (let i = 0; i < rows.length; i += size) {
+            const group = rows.slice(i, i + size);
+            if (group.length === 0) continue;
 
-      for (let i = 0; i < rows.length; i += size) {
-        const group = rows.slice(i, i + size);
-        if (group.length === 0) continue;
+            const timestamp = group[0].timestamp;
+            const open = applyPrice(group[0], group[0].microPrice);
+            const close = applyPrice(group[group.length - 1], group[group.length - 1].microPrice);
 
-        const timestamp = group[0].timestamp;
-        const open = applyPrice(group[0], group[0].microPrice);
-        const close = applyPrice(group[group.length - 1], group[group.length - 1].microPrice);
+            let high = -Infinity;
+            let low = Infinity;
 
-        let high = -Infinity;
-        let low = Infinity;
+            for (const row of group) {
+              if (row.askPrices.length > 0) {
+                high = Math.max(high, applyPrice(row, row.askPrices[0]));
+              }
+              high = Math.max(high, applyPrice(row, row.microPrice));
+              if (row.bidPrices.length > 0) {
+                low = Math.min(low, applyPrice(row, row.bidPrices[0]));
+              }
+              low = Math.min(low, applyPrice(row, row.microPrice));
+            }
 
-        for (const row of group) {
-          if (row.askPrices.length > 0) {
-            high = Math.max(high, applyPrice(row, row.askPrices[0]));
+            localCandles.push([timestamp, open, high, low, close]);
           }
-          high = Math.max(high, applyPrice(row, row.microPrice));
-          if (row.bidPrices.length > 0) {
-            low = Math.min(low, applyPrice(row, row.bidPrices[0]));
-          }
-          low = Math.min(low, applyPrice(row, row.microPrice));
-        }
-
-        candleData.push([timestamp, open, high, low, close]);
-      }
+          return localCandles;
+        })();
 
       const candlePoints = deltaEnabled
         ? deltaCandlestickVsPrevClose(candleData, deltaValueMode)
@@ -133,58 +166,88 @@ export function CandlestickChart({ symbol }: CandlestickChartProps): ReactNode {
     } else if (viewMode === 'price') {
       nextTitle = `${symbol} - Price${normSuffix}${deltaSuffix}`;
       const priceSeries: Highcharts.SeriesOptionsType[] = [
-        { type: 'line', name: 'Bid 3', color: getBidColor(0.5), marker: { symbol: 'square' }, data: [] },
-        { type: 'line', name: 'Bid 2', color: getBidColor(0.75), marker: { symbol: 'circle' }, data: [] },
-        { type: 'line', name: 'Bid 1', color: getBidColor(1.0), marker: { symbol: 'triangle' }, data: [] },
-        { type: 'line', name: 'Micro-price', color: 'gray', dashStyle: 'Dash', marker: { symbol: 'diamond' }, data: [] },
-        { type: 'line', name: 'Ask 1', color: getAskColor(1.0), marker: { symbol: 'triangle-down' }, data: [] },
-        { type: 'line', name: 'Ask 2', color: getAskColor(0.75), marker: { symbol: 'circle' }, data: [] },
-        { type: 'line', name: 'Ask 3', color: getAskColor(0.5), marker: { symbol: 'square' }, data: [] },
+        {
+          type: 'line',
+          name: 'Bid 3',
+          color: getBidColor(0.5),
+          marker: { symbol: 'square' },
+          data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.bid3 ?? symbolCache?.priceLevels.bid[2] ?? [] : symbolCache?.priceLevels.bid[2] ?? [],
+        },
+        {
+          type: 'line',
+          name: 'Bid 2',
+          color: getBidColor(0.75),
+          marker: { symbol: 'circle' },
+          data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.bid2 ?? symbolCache?.priceLevels.bid[1] ?? [] : symbolCache?.priceLevels.bid[1] ?? [],
+        },
+        {
+          type: 'line',
+          name: 'Bid 1',
+          color: getBidColor(1.0),
+          marker: { symbol: 'triangle' },
+          data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.bid1 ?? symbolCache?.priceLevels.bid[0] ?? [] : symbolCache?.priceLevels.bid[0] ?? [],
+        },
+        {
+          type: 'line',
+          name: 'Micro-price',
+          color: 'gray',
+          dashStyle: 'Dash',
+          marker: { symbol: 'diamond' },
+          data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.micro ?? symbolCache?.priceLevels.micro ?? [] : symbolCache?.priceLevels.micro ?? [],
+        },
+        {
+          type: 'line',
+          name: 'Ask 1',
+          color: getAskColor(1.0),
+          marker: { symbol: 'triangle-down' },
+          data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.ask1 ?? symbolCache?.priceLevels.ask[0] ?? [] : symbolCache?.priceLevels.ask[0] ?? [],
+        },
+        {
+          type: 'line',
+          name: 'Ask 2',
+          color: getAskColor(0.75),
+          marker: { symbol: 'circle' },
+          data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.ask2 ?? symbolCache?.priceLevels.ask[1] ?? [] : symbolCache?.priceLevels.ask[1] ?? [],
+        },
+        {
+          type: 'line',
+          name: 'Ask 3',
+          color: getAskColor(0.5),
+          marker: { symbol: 'square' },
+          data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.ask3 ?? symbolCache?.priceLevels.ask[2] ?? [] : symbolCache?.priceLevels.ask[2] ?? [],
+        },
       ];
-
-      for (const row of rows) {
-        for (let i = 0; i < row.bidPrices.length; i++) {
-          (priceSeries[2 - i] as { data: [number, number][] }).data.push([
-            row.timestamp,
-            applyPrice(row, row.bidPrices[i]),
-          ]);
-        }
-        (priceSeries[3] as { data: [number, number][] }).data.push([row.timestamp, applyPrice(row, row.microPrice)]);
-        for (let i = 0; i < row.askPrices.length; i++) {
-          (priceSeries[i + 4] as { data: [number, number][] }).data.push([
-            row.timestamp,
-            applyPrice(row, row.askPrices[i]),
-          ]);
-        }
-      }
 
       if (deltaEnabled) {
         nextSeries = (priceSeries as Highcharts.SeriesOptionsType[]).map(s => ({
           ...s,
-          data: deltaXYSeries((s as { data: [number, number][] }).data, deltaValueMode),
+          data: deltaXYSeries(
+            ((s as { data: [number, number][] }).data ?? []).map(([timestamp, value]) => [
+              timestamp,
+              applySeriesPrice(timestamp, value),
+            ]),
+            deltaValueMode,
+          ),
         })) as Highcharts.SeriesOptionsType[];
       } else {
-        nextSeries = priceSeries;
+        nextSeries = (priceSeries as Highcharts.SeriesOptionsType[]).map(s => ({
+          ...s,
+          data: ((s as { data: [number, number][] }).data ?? []).map(([timestamp, value]) => [
+            timestamp,
+            applySeriesPrice(timestamp, value),
+          ]),
+        })) as Highcharts.SeriesOptionsType[];
       }
     } else {
       nextTitle = `${symbol} - Volume${deltaSuffix}`;
       const volumeSeries: Highcharts.SeriesOptionsType[] = [
-        { type: 'column', name: 'Bid 3', color: getBidColor(0.5), data: [] },
-        { type: 'column', name: 'Bid 2', color: getBidColor(0.75), data: [] },
-        { type: 'column', name: 'Bid 1', color: getBidColor(1.0), data: [] },
-        { type: 'column', name: 'Ask 1', color: getAskColor(1.0), data: [] },
-        { type: 'column', name: 'Ask 2', color: getAskColor(0.75), data: [] },
-        { type: 'column', name: 'Ask 3', color: getAskColor(0.5), data: [] },
+        { type: 'column', name: 'Bid 3', color: getBidColor(0.5), data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.bid3 ?? symbolCache?.volumeLevels.bid[2] ?? [] : symbolCache?.volumeLevels.bid[2] ?? [] },
+        { type: 'column', name: 'Bid 2', color: getBidColor(0.75), data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.bid2 ?? symbolCache?.volumeLevels.bid[1] ?? [] : symbolCache?.volumeLevels.bid[1] ?? [] },
+        { type: 'column', name: 'Bid 1', color: getBidColor(1.0), data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.bid1 ?? symbolCache?.volumeLevels.bid[0] ?? [] : symbolCache?.volumeLevels.bid[0] ?? [] },
+        { type: 'column', name: 'Ask 1', color: getAskColor(1.0), data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.ask1 ?? symbolCache?.volumeLevels.ask[0] ?? [] : symbolCache?.volumeLevels.ask[0] ?? [] },
+        { type: 'column', name: 'Ask 2', color: getAskColor(0.75), data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.ask2 ?? symbolCache?.volumeLevels.ask[1] ?? [] : symbolCache?.volumeLevels.ask[1] ?? [] },
+        { type: 'column', name: 'Ask 3', color: getAskColor(0.5), data: serverData.data && !Array.isArray(serverData.data.series) ? serverData.data.series.ask3 ?? symbolCache?.volumeLevels.ask[2] ?? [] : symbolCache?.volumeLevels.ask[2] ?? [] },
       ];
-
-      for (const row of rows) {
-        for (let i = 0; i < row.bidVolumes.length; i++) {
-          (volumeSeries[2 - i] as { data: [number, number][] }).data.push([row.timestamp, row.bidVolumes[i]]);
-        }
-        for (let i = 0; i < row.askVolumes.length; i++) {
-          (volumeSeries[i + 3] as { data: [number, number][] }).data.push([row.timestamp, row.askVolumes[i]]);
-        }
-      }
 
       if (deltaEnabled) {
         nextSeries = (volumeSeries as Highcharts.SeriesOptionsType[]).map(s => ({
@@ -197,7 +260,7 @@ export function CandlestickChart({ symbol }: CandlestickChartProps): ReactNode {
     }
 
     return { series: nextSeries, title: nextTitle, chartOptions: nextOptions };
-  }, [rows, size, viewMode, symbol, normEnabled, normRef, baseline, deltaEnabled, deltaValueMode]);
+  }, [rows, size, viewMode, symbol, normEnabled, normRef, baseline, deltaEnabled, deltaValueMode, serverData.data]);
 
   const controls = (
     <Stack gap="xs">

@@ -1,7 +1,6 @@
 import { Group, NumberInput, Slider, SliderProps, Text, Title } from '@mantine/core';
 import { useHotkeys } from '@mantine/hooks';
-import { KeyboardEvent, ReactNode, useCallback, useEffect, useState } from 'react';
-import { AlgorithmDataRow } from '../../models.ts';
+import { KeyboardEvent, ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../store.ts';
 import { formatNumber } from '../../utils/format.ts';
 import { TimestampDetail } from './TimestampDetail.tsx';
@@ -9,18 +8,23 @@ import { VisualizerCard } from './VisualizerCard.tsx';
 
 export function TimestampsCard(): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
+  const chartCache = algorithm.chartCache;
   const followDetail = useStore(state => state.visualizerFollowTimestampDetail);
   const externalDetailTs = useStore(state => state.visualizerDetailTimestamp);
   const setFollowDetail = useStore(state => state.setVisualizerFollowTimestampDetail);
 
-  const rowsByTimestamp: Record<number, AlgorithmDataRow> = {};
-  for (const row of algorithm.data) {
-    rowsByTimestamp[row.state.timestamp] = row;
-  }
+  const rowsByTimestamp = useMemo(() => {
+    if (chartCache) {
+      return chartCache.rowsByTimestamp;
+    }
 
-  const timestampMin = algorithm.data[0].state.timestamp;
-  const timestampMax = algorithm.data[algorithm.data.length - 1].state.timestamp;
-  const timestampStep = algorithm.data[1].state.timestamp - algorithm.data[0].state.timestamp;
+    return Object.fromEntries(algorithm.data.map(row => [row.state.timestamp, row]));
+  }, [algorithm, chartCache]);
+
+  const timestampMin = chartCache?.timestampMin ?? algorithm.data[0].state.timestamp;
+  const timestampMax = chartCache?.timestampMax ?? algorithm.data[algorithm.data.length - 1].state.timestamp;
+  const timestampStep =
+    chartCache?.timestampStep ?? algorithm.data[1].state.timestamp - algorithm.data[0].state.timestamp;
 
   // const timestampMin = 0;
   // const timestampMax = 1999900;

@@ -94,6 +94,7 @@ out
 # Nuxt.js build / generate output
 .nuxt
 dist
+dist-perf
 
 # Gatsby files
 .cache/
@@ -144,3 +145,5 @@ dist
 # End of https://www.toptal.com/developers/gitignore/api/node
 
 .idea
+.codex
+server/derived-cache/

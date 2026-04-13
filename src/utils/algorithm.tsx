@@ -25,6 +25,7 @@ import {
 } from '../models.ts';
 import { authenticatedAxios } from './axios.ts';
 import { microPriceFromTopOfBook } from './microPrice.ts';
+import { buildAlgorithmChartCache } from './algorithmChartCache.ts';
 import { prepareProsperity3ResultLogForP4Visualizer } from './prosperity3ResultLog.ts';
 import { filterResultLogByAssets, shouldApplyAssetFilter } from './resultLogAssetFilter.ts';
 
@@ -336,12 +337,16 @@ export function parseAlgorithmLogs(
     );
   }
 
-  return {
+  const algorithm: Algorithm = {
     summary,
     activityLogs,
     data,
     tradeHistory: resultLog.tradeHistory ?? [],
   };
+
+  algorithm.chartCache = buildAlgorithmChartCache(algorithm);
+
+  return algorithm;
 }
 
 export async function getAlgorithmLogsUrl(algorithmId: string): Promise<string> {

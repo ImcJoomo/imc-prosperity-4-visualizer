@@ -120,11 +120,70 @@ export interface AlgorithmDataRow {
   sandboxLogs: string;
 }
 
+export type XYSeries = [number, number][];
+
+export interface CachedOrderPoint {
+  x: number;
+  y: number;
+  quantity: number;
+  buyer?: string;
+  seller?: string;
+}
+
+export interface AlgorithmSymbolChartCache {
+  activityRows: ActivityLogRow[];
+  priceLevels: {
+    micro: XYSeries;
+    bid: [XYSeries, XYSeries, XYSeries];
+    ask: [XYSeries, XYSeries, XYSeries];
+  };
+  volumeLevels: {
+    bid: [XYSeries, XYSeries, XYSeries];
+    ask: [XYSeries, XYSeries, XYSeries];
+  };
+  plainValueObservation: XYSeries;
+  wallMid: XYSeries;
+  conversion: {
+    bid: XYSeries;
+    ask: XYSeries;
+    transportFees: XYSeries;
+    importTariff: XYSeries;
+    exportTariff: XYSeries;
+    sugarPrice: XYSeries;
+    sunlightIndex: XYSeries;
+  };
+  trades: {
+    filledBuy: CachedOrderPoint[];
+    filledSell: CachedOrderPoint[];
+    other: CachedOrderPoint[];
+  };
+  orders: {
+    buy: CachedOrderPoint[];
+    sell: CachedOrderPoint[];
+  };
+  position: XYSeries;
+  profitLoss: XYSeries;
+}
+
+export interface AlgorithmChartCache {
+  listingSymbols: string[];
+  plainValueObservationSymbols: string[];
+  conversionSymbols: string[];
+  rowsByTimestamp: Record<number, AlgorithmDataRow>;
+  timestampMin: number;
+  timestampMax: number;
+  timestampStep: number;
+  totalProfitLoss: XYSeries;
+  plainValueObservations: Record<string, XYSeries>;
+  bySymbol: Record<string, AlgorithmSymbolChartCache>;
+}
+
 export interface Algorithm {
   summary?: AlgorithmSummary;
   activityLogs: ActivityLogRow[];
   data: AlgorithmDataRow[];
   tradeHistory: ResultLogTradeHistoryItem[];
+  chartCache?: AlgorithmChartCache;
 }
 
 export type CompressedListing = [symbol: ProsperitySymbol, product: Product, denomination: Product];

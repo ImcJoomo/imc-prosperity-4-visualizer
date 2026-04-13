@@ -10,11 +10,13 @@ import { ReactNode, useMemo } from 'react';
 import { useActualColorScheme } from '../../hooks/use-actual-color-scheme.ts';
 import { useStore } from '../../store.ts';
 import { formatNumber } from '../../utils/format.ts';
+import { isPerfExperimentsEnabled } from '../../utils/perfMode.ts';
 import {
   clearSyncedCrosshairPlotLines,
   isVisualizerSyncTrigger,
   propagateXAxisExtremes,
   registerLinkedChart,
+  schedulePropagateXAxisExtremes,
   syncCrosshairPlotLines,
   unregisterLinkedChart,
 } from './chartLinkRegistry.ts';
@@ -61,8 +63,49 @@ interface ChartProps {
   controls?: ReactNode;
 }
 
+function ensurePersistentResetZoomButton(chart: Highcharts.Chart): void {
+  if (!isPerfExperimentsEnabled) {
+    return;
+  }
+
+  const chartWithResetZoom = chart as Highcharts.Chart & {
+    resetZoomButton?: Highcharts.SVGElement | null;
+    showResetZoom?: () => void;
+  };
+
+  if (!chartWithResetZoom.resetZoomButton && typeof chartWithResetZoom.showResetZoom === 'function') {
+    chartWithResetZoom.showResetZoom();
+  }
+}
+
+function getHoveredPointX(chart: Highcharts.Chart): number | null {
+  const chartWithHover = chart as Highcharts.Chart & {
+    hoverPoint?: Highcharts.Point | null;
+    hoverPoints?: Highcharts.Point[] | null;
+  };
+
+  const hoverPoint = chartWithHover.hoverPoint;
+  if (typeof hoverPoint?.x === 'number' && !Number.isNaN(hoverPoint.x)) {
+    return hoverPoint.x;
+  }
+
+  const hoverPoints = chartWithHover.hoverPoints;
+  if (!hoverPoints) {
+    return null;
+  }
+
+  for (const point of hoverPoints) {
+    if (typeof point?.x === 'number' && !Number.isNaN(point.x)) {
+      return point.x;
+    }
+  }
+
+  return null;
+}
+
 export function Chart({ title, options, series, min, max, controls }: ChartProps): ReactNode {
   const colorScheme = useActualColorScheme();
+  const algorithm = useStore(state => state.algorithm);
   const linkedZoom = useStore(state => state.visualizerLinkedZoom);
   const coarseGrouping = useStore(state => state.visualizerCoarseGrouping);
   const syncCrosshair = useStore(state => state.visualizerSyncCrosshair);
@@ -86,9 +129,11 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
         events: {
           load(this: Highcharts.Chart) {
             registerLinkedChart(this);
+            ensurePersistentResetZoomButton(this);
             let detailRaf = 0;
             let crosshairRaf = 0;
             let pendingCrosshairX: number | null = null;
+
             const onContainerMove = (e: MouseEvent): void => {
               const st = useStore.getState();
               const pos = this.pointer.normalize(e as unknown as PointerEvent);
@@ -106,7 +151,8 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
               if (!st.visualizerSyncCrosshair) {
                 clearSyncedCrosshairPlotLines();
               } else if (insidePlot) {
-                const xVal = this.xAxis[0].toValue(chartX);
+                const rawXVal = this.xAxis[0].toValue(chartX);
+                const xVal = isPerfExperimentsEnabled ? getHoveredPointX(this) ?? rawXVal : rawXVal;
                 if (typeof xVal === 'number' && !Number.isNaN(xVal)) {
                   pendingCrosshairX = xVal;
                   if (!crosshairRaf) {
@@ -179,6 +225,9 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
           fullscreenClose(this: Highcharts.Chart) {
             (this as any).tooltip.update({ outside: true });
           },
+          render(this: Highcharts.Chart) {
+            ensurePersistentResetZoomButton(this);
+          },
         },
       },
       title: {
@@ -207,6 +256,13 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
       },
       xAxis: {
         type: 'datetime',
+        ...(isPerfExperimentsEnabled && algorithm?.chartCache
+          ? {
+              min: algorithm.chartCache.timestampMin,
+              max: algorithm.chartCache.timestampMax,
+              ordinal: false,
+            }
+          : {}),
         title: {
           text: 'Timestamp',
         },
@@ -218,14 +274,19 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
         },
         events: {
           afterSetExtremes(this: Highcharts.Axis, e: Highcharts.AxisSetExtremesEventObject) {
+            const syncTrigger = isVisualizerSyncTrigger(String(e.trigger));
             if (!useStore.getState().visualizerLinkedZoom) {
               return;
             }
-            if (isVisualizerSyncTrigger(String(e.trigger))) {
+            if (syncTrigger) {
               return;
             }
             const { min, max } = this.getExtremes();
             if (min == null || max == null) {
+              return;
+            }
+            if (isPerfExperimentsEnabled) {
+              schedulePropagateXAxisExtremes(this.chart, min, max);
               return;
             }
             propagateXAxisExtremes(this.chart, min, max);
@@ -260,7 +321,7 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
     };
 
     return merge(themeOptions, chartOptions);
-  }, [colorScheme, title, options, series, min, max, linkedZoom, coarseGrouping, syncCrosshair]);
+  }, [algorithm, colorScheme, title, options, series, min, max, linkedZoom, coarseGrouping, syncCrosshair]);
 
   return (
     <VisualizerCard p={0}>
@@ -269,7 +330,12 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
           {controls}
         </Box>
       )}
-      <HighchartsReact highcharts={Highcharts} constructorType={'stockChart'} options={fullOptions} immutable />
+      <HighchartsReact
+        highcharts={Highcharts}
+        constructorType={'stockChart'}
+        options={fullOptions}
+        immutable
+      />
     </VisualizerCard>
   );
 }

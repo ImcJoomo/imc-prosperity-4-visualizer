@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && VITE_PERF_EXPERIMENTS=1 vite build",
+    "build:perf": "tsc && VITE_BASE_PATH=/imc-prosperity-4-visualizer-perf/ VITE_PERF_EXPERIMENTS=1 vite build --outDir dist-perf",
     "preview": "vite preview",
     "lint": "pnpm run \"/^lint:.*/\"",
     "lint:eslint": "eslint --format codeframe '**/*.ts' '**/*.tsx'",

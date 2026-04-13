@@ -1,7 +1,8 @@
 import { SegmentedControl, Stack } from '@mantine/core';
 import Highcharts from 'highcharts';
 import { ReactNode, useMemo, useState } from 'react';
-import { ProsperitySymbol } from '../../models.ts';
+import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
+import { CachedOrderPoint, ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
 import { getAskColor, getBidColor } from '../../utils/colors.ts';
 import { buildBaselineLookup, normalizationDeltaAxisTitle, normalizePoint } from '../../utils/priceNormalization.ts';
@@ -15,6 +16,7 @@ export interface OrdersChartProps {
 
 export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
   const algorithm = useStore(state => state.algorithm)!;
+  const symbolCache = algorithm.chartCache?.bySymbol[symbol];
   const normEnabled = useStore(state => state.visualizerPriceNormalization);
   const normRef = useStore(state => state.visualizerNormalizationReference);
   const tradeQtyMin = useStore(state => state.visualizerTradeQtyMin);
@@ -27,6 +29,27 @@ export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
   const [deltaValueMode, setDeltaValueMode] = useState<DeltaValueMode>('raw');
 
   const [priceMode, setPriceMode] = useState<'micro' | 'bidask'>('micro');
+  const serverData = useServerChartData<{
+    series: {
+      micro: [number, number][];
+      bid1: [number, number][];
+      bid2: [number, number][];
+      bid3: [number, number][];
+      ask1: [number, number][];
+      ask2: [number, number][];
+      ask3: [number, number][];
+      filledBuy: CachedOrderPoint[];
+      filledSell: CachedOrderPoint[];
+      other: CachedOrderPoint[];
+      orderBuy: CachedOrderPoint[];
+      orderSell: CachedOrderPoint[];
+    };
+  }>('orders', { symbol, priceMode, qtyMin: tradeQtyMin, qtyMax: tradeQtyMax }, [
+    symbol,
+    priceMode,
+    tradeQtyMin,
+    tradeQtyMax,
+  ]);
 
   const baseline = useMemo(
     () => buildBaselineLookup(algorithm, symbol, normRef),
@@ -51,74 +74,32 @@ export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
       return true;
     };
 
-    const microPriceData: [number, number][] = [];
-    const bid1Data: [number, number][] = [];
-    const bid2Data: [number, number][] = [];
-    const bid3Data: [number, number][] = [];
-    const ask1Data: [number, number][] = [];
-    const ask2Data: [number, number][] = [];
-    const ask3Data: [number, number][] = [];
+    const mapXYSeries = (points: [number, number][]): [number, number][] =>
+      points.map(([timestamp, value]) => [timestamp, nPrice(timestamp, value)]);
 
-    for (const row of algorithm.activityLogs) {
-      if (row.product !== symbol) continue;
+    const mapScatterSeries = (points: CachedOrderPoint[]): Highcharts.PointOptionsObject[] =>
+      points
+        .filter(point => qtyOk(point.quantity))
+        .map(point => ({
+          x: point.x,
+          y: nPrice(point.x, point.y),
+          custom: { quantity: point.quantity, buyer: point.buyer, seller: point.seller },
+        }));
 
-      microPriceData.push([row.timestamp, nPrice(row.timestamp, row.microPrice)]);
+    const remoteSeries = serverData.data?.series;
+    const microPriceData = mapXYSeries(remoteSeries?.micro ?? symbolCache?.priceLevels.micro ?? []);
+    const bid1Data = mapXYSeries(remoteSeries?.bid1 ?? symbolCache?.priceLevels.bid[0] ?? []);
+    const bid2Data = mapXYSeries(remoteSeries?.bid2 ?? symbolCache?.priceLevels.bid[1] ?? []);
+    const bid3Data = mapXYSeries(remoteSeries?.bid3 ?? symbolCache?.priceLevels.bid[2] ?? []);
+    const ask1Data = mapXYSeries(remoteSeries?.ask1 ?? symbolCache?.priceLevels.ask[0] ?? []);
+    const ask2Data = mapXYSeries(remoteSeries?.ask2 ?? symbolCache?.priceLevels.ask[1] ?? []);
+    const ask3Data = mapXYSeries(remoteSeries?.ask3 ?? symbolCache?.priceLevels.ask[2] ?? []);
 
-      if (row.bidPrices.length >= 1) bid1Data.push([row.timestamp, nPrice(row.timestamp, row.bidPrices[0])]);
-      if (row.bidPrices.length >= 2) bid2Data.push([row.timestamp, nPrice(row.timestamp, row.bidPrices[1])]);
-      if (row.bidPrices.length >= 3) bid3Data.push([row.timestamp, nPrice(row.timestamp, row.bidPrices[2])]);
-      if (row.askPrices.length >= 1) ask1Data.push([row.timestamp, nPrice(row.timestamp, row.askPrices[0])]);
-      if (row.askPrices.length >= 2) ask2Data.push([row.timestamp, nPrice(row.timestamp, row.askPrices[1])]);
-      if (row.askPrices.length >= 3) ask3Data.push([row.timestamp, nPrice(row.timestamp, row.askPrices[2])]);
-    }
-
-    const filledBuyData: Highcharts.PointOptionsObject[] = [];
-    const filledSellData: Highcharts.PointOptionsObject[] = [];
-    const otherTradeData: Highcharts.PointOptionsObject[] = [];
-
-    for (const trade of algorithm.tradeHistory) {
-      if (trade.symbol !== symbol) continue;
-      if (!qtyOk(trade.quantity)) continue;
-
-      const point: Highcharts.PointOptionsObject = {
-        x: trade.timestamp,
-        y: nPrice(trade.timestamp, trade.price),
-        custom: { quantity: trade.quantity, buyer: trade.buyer, seller: trade.seller },
-      };
-
-      if (trade.buyer.includes('SUBMISSION')) {
-        if (showOwnTrades) filledBuyData.push(point);
-      } else if (trade.seller.includes('SUBMISSION')) {
-        if (showOwnTrades) filledSellData.push(point);
-      } else if (showOtherTrades) {
-        otherTradeData.push(point);
-      }
-    }
-
-    const unfilledBuyData: Highcharts.PointOptionsObject[] = [];
-    const unfilledSellData: Highcharts.PointOptionsObject[] = [];
-
-    for (const row of algorithm.data) {
-      const orders = row.orders[symbol];
-      if (!orders) continue;
-
-      for (const order of orders) {
-        const q = Math.abs(order.quantity);
-        if (!qtyOk(q)) continue;
-
-        const point: Highcharts.PointOptionsObject = {
-          x: row.state.timestamp,
-          y: nPrice(row.state.timestamp, order.price),
-          custom: { quantity: q },
-        };
-
-        if (order.quantity > 0) {
-          unfilledBuyData.push(point);
-        } else if (order.quantity < 0) {
-          unfilledSellData.push(point);
-        }
-      }
-    }
+    const filledBuyData = showOwnTrades ? mapScatterSeries(remoteSeries?.filledBuy ?? symbolCache?.trades.filledBuy ?? []) : [];
+    const filledSellData = showOwnTrades ? mapScatterSeries(remoteSeries?.filledSell ?? symbolCache?.trades.filledSell ?? []) : [];
+    const otherTradeData = showOtherTrades ? mapScatterSeries(remoteSeries?.other ?? symbolCache?.trades.other ?? []) : [];
+    const unfilledBuyData = showUnfilledBuys ? mapScatterSeries(remoteSeries?.orderBuy ?? symbolCache?.orders.buy ?? []) : [];
+    const unfilledSellData = showUnfilledSells ? mapScatterSeries(remoteSeries?.orderSell ?? symbolCache?.orders.sell ?? []) : [];
 
     const filledBuyTooltip: Highcharts.SeriesTooltipOptionsObject = {
       pointFormatter(this: Highcharts.Point) {
@@ -297,8 +278,6 @@ export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
 
     return { series: finalSeries, chartOptions: nextOptions, chartTitle: nextTitle };
   }, [
-    algorithm,
-    symbol,
     priceMode,
     normEnabled,
     normRef,
@@ -311,6 +290,8 @@ export function OrdersChart({ symbol }: OrdersChartProps): ReactNode {
     showUnfilledSells,
     deltaEnabled,
     deltaValueMode,
+    symbolCache,
+    serverData.data,
   ]);
 
   const controls = (
