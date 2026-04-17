@@ -11,6 +11,7 @@ export function TimestampsCard(): ReactNode {
   const chartCache = algorithm.chartCache;
   const followDetail = useStore(state => state.visualizerFollowTimestampDetail);
   const externalDetailTs = useStore(state => state.visualizerDetailTimestamp);
+  const clickedTs = useStore(state => state.visualizerClickedTimestamp);
   const setFollowDetail = useStore(state => state.setVisualizerFollowTimestampDetail);
 
   const rowsByTimestamp = useMemo(() => {
@@ -23,12 +24,15 @@ export function TimestampsCard(): ReactNode {
 
   const timestampMin = chartCache?.timestampMin ?? algorithm.data[0].state.timestamp;
   const timestampMax = chartCache?.timestampMax ?? algorithm.data[algorithm.data.length - 1].state.timestamp;
-  const timestampStep =
-    chartCache?.timestampStep ?? algorithm.data[1].state.timestamp - algorithm.data[0].state.timestamp;
-
-  // const timestampMin = 0;
-  // const timestampMax = 1999900;
-  // const timestampStep = 100;
+  const timestampStep = chartCache?.timestampStep ?? (() => {
+    if (algorithm.data.length < 2) return 1;
+    let minDiff = Infinity;
+    for (let i = 1; i < algorithm.data.length; i++) {
+      const diff = algorithm.data[i].state.timestamp - algorithm.data[i - 1].state.timestamp;
+      if (diff > 0 && diff < minDiff) minDiff = diff;
+    }
+    return minDiff === Infinity ? 1 : minDiff;
+  })();
 
   const [timestamp, setTimestamp] = useState(timestampMin);
   const [inputValue, setInputValue] = useState<number | string>(timestampMin);
@@ -61,6 +65,15 @@ export function TimestampsCard(): ReactNode {
     setTimestamp(snapped);
     setInputValue(snapped);
   }, [followDetail, externalDetailTs, snapToNearest]);
+
+  useEffect(() => {
+    if (clickedTs === null) {
+      return;
+    }
+    const snapped = snapToNearest(clickedTs);
+    setTimestamp(snapped);
+    setInputValue(snapped);
+  }, [clickedTs, snapToNearest]);
 
   function commit(): void {
     const parsed = typeof inputValue === 'number' ? inputValue : Number(inputValue);

@@ -238,6 +238,18 @@ export function Chart({ title, options, series, min, max, controls }: ChartProps
       },
       plotOptions: {
         series: {
+          cursor: 'pointer',
+          point: {
+            events: {
+              click(this: Highcharts.Point) {
+                if (typeof this.x === 'number' && !Number.isNaN(this.x)) {
+                  const st = useStore.getState();
+                  st.setVisualizerFollowTimestampDetail(false);
+                  st.setVisualizerClickedTimestamp(this.x);
+                }
+              },
+            },
+          },
           dataGrouping: {
             approximation(this: any, values: number[]): number {
               const endIndex = this.dataGroupInfo.start + this.dataGroupInfo.length;

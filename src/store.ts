@@ -31,6 +31,7 @@ export interface State {
   visualizerOrdersShowUnfilledSells: boolean;
   visualizerFollowTimestampDetail: boolean;
   visualizerDetailTimestamp: number | null;
+  visualizerClickedTimestamp: number | null;
   visualizerHiddenSymbols: string[];
   visualizerSyncCrosshair: boolean;
   visualizerRangeMin: number | null;
@@ -54,6 +55,7 @@ export interface State {
   setVisualizerOrdersShowUnfilledSells: (value: boolean) => void;
   setVisualizerFollowTimestampDetail: (value: boolean) => void;
   setVisualizerDetailTimestamp: (value: number | null) => void;
+  setVisualizerClickedTimestamp: (value: number | null) => void;
   setVisualizerHiddenSymbols: (symbols: string[]) => void;
   setVisualizerSyncCrosshair: (value: boolean) => void;
   setVisualizerRange: (min: number | null, max: number | null) => void;
@@ -83,6 +85,7 @@ export const useStore = create<State>()(
       visualizerOrdersShowUnfilledSells: false,
       visualizerFollowTimestampDetail: false,
       visualizerDetailTimestamp: null,
+      visualizerClickedTimestamp: null,
       visualizerHiddenSymbols: [],
       visualizerSyncCrosshair: true,
       visualizerRangeMin: null,
@@ -127,6 +130,7 @@ export const useStore = create<State>()(
       setVisualizerOrdersShowUnfilledSells: value => set({ visualizerOrdersShowUnfilledSells: value }),
       setVisualizerFollowTimestampDetail: value => set({ visualizerFollowTimestampDetail: value }),
       setVisualizerDetailTimestamp: value => set({ visualizerDetailTimestamp: value }),
+      setVisualizerClickedTimestamp: value => set({ visualizerClickedTimestamp: value }),
       setVisualizerHiddenSymbols: symbols => set({ visualizerHiddenSymbols: symbols }),
       setVisualizerSyncCrosshair: value => set({ visualizerSyncCrosshair: value }),
       setVisualizerRange: (min, max) =>

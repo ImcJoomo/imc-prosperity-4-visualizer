@@ -204,8 +204,17 @@ export function buildAlgorithmChartCache(algorithm: Algorithm): AlgorithmChartCa
 
   const timestampMin = algorithm.data[0]?.state.timestamp ?? 0;
   const timestampMax = algorithm.data[algorithm.data.length - 1]?.state.timestamp ?? 0;
-  const timestampStep =
-    algorithm.data.length >= 2 ? algorithm.data[1].state.timestamp - algorithm.data[0].state.timestamp : 1;
+  let timestampStep = 1;
+  if (algorithm.data.length >= 2) {
+    let minDiff = Infinity;
+    for (let i = 1; i < algorithm.data.length; i++) {
+      const diff = algorithm.data[i].state.timestamp - algorithm.data[i - 1].state.timestamp;
+      if (diff > 0 && diff < minDiff) {
+        minDiff = diff;
+      }
+    }
+    timestampStep = minDiff === Infinity ? 1 : minDiff;
+  }
 
   return {
     listingSymbols: sortedListingSymbols,
