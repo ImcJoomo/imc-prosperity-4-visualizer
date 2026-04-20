@@ -1,5 +1,6 @@
 import Highcharts from 'highcharts';
 import { ReactNode, useMemo, useState } from 'react';
+import positionLimits from '../../config/positionLimits.json';
 import { useServerChartData } from '../../hooks/use-server-chart-data.ts';
 import { Algorithm, ProsperitySymbol } from '../../models.ts';
 import { useStore } from '../../store.ts';
@@ -8,10 +9,7 @@ import { Chart } from './Chart.tsx';
 import { ChartDeltaBar } from './ChartDeltaBar.tsx';
 
 function getLimit(algorithm: Algorithm, symbol: ProsperitySymbol): number {
-  const knownLimits: Record<string, number> = {
-    TOMATOES: 80,
-    EMERALDS: 80
-  };
+  const knownLimits: Record<string, number> = positionLimits;
 
   if (knownLimits[symbol] !== undefined) {
     return knownLimits[symbol];
