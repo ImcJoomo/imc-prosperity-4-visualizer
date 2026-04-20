@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 
-const DERIVED_CACHE_VERSION = 1;
+const DERIVED_CACHE_VERSION = 2;
 
 export function createDerivedCacheApi({ logsDir, derivedDir }) {
   if (!fs.existsSync(derivedDir)) {
@@ -86,6 +86,7 @@ export function createDerivedCacheApi({ logsDir, derivedDir }) {
   function getActivityLogs(logLines) {
     const lines = String(logLines || '').split('\n');
     const rows = [];
+    const lastKnownMicroPriceByProduct = new Map();
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i];
       if (!line) {
@@ -97,17 +98,28 @@ export function createDerivedCacheApi({ logsDir, derivedDir }) {
       const bidVolumes = getColumnValues(columns, [4, 6, 8]);
       const askPrices = getColumnValues(columns, [9, 11, 13]);
       const askVolumes = getColumnValues(columns, [10, 12, 14]);
+      const product = columns[2];
       const fallbackMid = Number(columns[15]);
+      const hasOrderBook = bidPrices.length > 0 || askPrices.length > 0;
+      let microPrice = microPriceFromTopOfBook(bidPrices, bidVolumes, askPrices, askVolumes, fallbackMid);
+
+      if (!hasOrderBook && (!Number.isFinite(fallbackMid) || fallbackMid === 0)) {
+        microPrice = lastKnownMicroPriceByProduct.get(product) ?? microPrice;
+      }
+
+      if (Number.isFinite(microPrice) && microPrice !== 0) {
+        lastKnownMicroPriceByProduct.set(product, microPrice);
+      }
 
       rows.push({
         day: Number(columns[0]),
         timestamp: Number(columns[1]),
-        product: columns[2],
+        product,
         bidPrices,
         bidVolumes,
         askPrices,
         askVolumes,
-        microPrice: microPriceFromTopOfBook(bidPrices, bidVolumes, askPrices, askVolumes, fallbackMid),
+        microPrice,
         profitLoss: Number(columns[16]),
       });
     }

@@ -1,4 +1,4 @@
-import type { ResultLog, ResultLogItems } from '../models.ts';
+import type { ResultLog } from '../models.ts';
 
 export function collectResultLogAssetKeys(resultLog: ResultLog): string[] {
   const keys = new Set<string>();
@@ -42,24 +42,20 @@ export function filterResultLogByAssets(resultLog: ResultLog, keep: Set<string>)
     return resultLog;
   }
   const keptLines: string[] = [lines[0]!];
-  const keptLogs: ResultLogItems[] = [];
-  const n = Math.min(lines.length - 1, resultLog.logs.length);
-  for (let i = 0; i < n; i++) {
-    const line = lines[i + 1]!;
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i]!;
     if (!line || line === '') {
       break;
     }
     const product = line.split(';')[2] ?? '';
     if (keep.has(product)) {
       keptLines.push(line);
-      keptLogs.push(resultLog.logs[i]!);
     }
   }
   const tradeHistory = (resultLog.tradeHistory ?? []).filter(t => keep.has(t.symbol));
   return {
     ...resultLog,
     activitiesLog: keptLines.join('\n'),
-    logs: keptLogs,
     tradeHistory,
   };
 }

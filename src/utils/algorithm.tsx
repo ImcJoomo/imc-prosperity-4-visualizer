@@ -65,6 +65,7 @@ function getActivityLogs(logLines: string): ActivityLogRow[] {
   // }
   const lines = logLines.split('\n');
   const rows: ActivityLogRow[] = [];
+  const lastKnownMicroPriceByProduct = new Map<string, number>();
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
@@ -78,17 +79,28 @@ function getActivityLogs(logLines: string): ActivityLogRow[] {
     const bidVolumes = getColumnValues(columns, [4, 6, 8]);
     const askPrices = getColumnValues(columns, [9, 11, 13]);
     const askVolumes = getColumnValues(columns, [10, 12, 14]);
+    const product = columns[2];
     const fallbackMid = Number(columns[15]);
+    const hasOrderBook = bidPrices.length > 0 || askPrices.length > 0;
+    let microPrice = microPriceFromTopOfBook(bidPrices, bidVolumes, askPrices, askVolumes, fallbackMid);
+
+    if (!hasOrderBook && (!Number.isFinite(fallbackMid) || fallbackMid === 0)) {
+      microPrice = lastKnownMicroPriceByProduct.get(product) ?? microPrice;
+    }
+
+    if (Number.isFinite(microPrice) && microPrice !== 0) {
+      lastKnownMicroPriceByProduct.set(product, microPrice);
+    }
 
     rows.push({
       day: Number(columns[0]),
       timestamp: Number(columns[1]),
-      product: columns[2],
+      product,
       bidPrices,
       bidVolumes,
       askPrices,
       askVolumes,
-      microPrice: microPriceFromTopOfBook(bidPrices, bidVolumes, askPrices, askVolumes, fallbackMid),
+      microPrice,
       profitLoss: Number(columns[16]),
     });
   }
