@@ -145,5 +145,6 @@ dist-perf
 # End of https://www.toptal.com/developers/gitignore/api/node
 
 .idea
+AGENTS.md
 .codex
 server/derived-cache/
