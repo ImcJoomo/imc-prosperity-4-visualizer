@@ -228,6 +228,15 @@ export function TimestampsCard(): ReactNode {
           styles={{ input: { fontWeight: 700, fontSize: 'var(--mantine-font-size-sm)' } }}
         />
         <Select
+          aria-label="Trade jump symbol"
+          size="xs"
+          w={190}
+          searchable
+          data={tradeJumpSymbolOptions}
+          value={tradeJumpSymbol}
+          onChange={value => setTradeJumpSymbol(value ?? 'any')}
+        />
+        <Select
           aria-label="Trade jump type"
           size="xs"
           w={140}
@@ -239,15 +248,6 @@ export function TimestampsCard(): ReactNode {
           ]}
           value={tradeJumpType}
           onChange={value => setTradeJumpType((value ?? 'any') as TradeJumpType)}
-        />
-        <Select
-          aria-label="Trade jump symbol"
-          size="xs"
-          w={190}
-          searchable
-          data={tradeJumpSymbolOptions}
-          value={tradeJumpSymbol}
-          onChange={value => setTradeJumpSymbol(value ?? 'any')}
         />
         <Button
           size="compact-xs"
