@@ -40,7 +40,7 @@ if (!AUTH_USER || !AUTH_PASSWORD) {
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 function unauthorized(res) {
   res.set('WWW-Authenticate', 'Basic realm="IMC Prosperity 4 Visualizer"');

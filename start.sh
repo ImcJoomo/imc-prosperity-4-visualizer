@@ -4,7 +4,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Start the log server
 echo "Starting log server on port 4174..."
-(cd "$SCRIPT_DIR/server" && npm install && npm start) &
+(cd "$SCRIPT_DIR/server" \
+  && npm install \
+  && PORT="${PORT:-4174}" \
+     BASIC_AUTH_USER="${BASIC_AUTH_USER:-admin}" \
+     BASIC_AUTH_PASSWORD="${BASIC_AUTH_PASSWORD:-admin}" \
+     npm start) &
 SERVER_PID=$!
 
 # Wait for server to start
